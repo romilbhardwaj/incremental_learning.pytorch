@@ -1,5 +1,6 @@
 import copy
 import random
+import time
 
 import numpy as np
 import torch
@@ -50,12 +51,34 @@ def _train(args):
             len(test_set)
         )
 
+        # Before Task
+        start_time = time.time()
         model.before_task(train_loader, val_loader)
-        print("train", task * args["increment"], (task + 1) * args["increment"])
-        model.train_task(train_loader, val_loader)
-        model.after_task(train_loader)
+        end_time = time.time()
+        results["profile"][task] = {"before_task": end_time-start_time}
 
+        print("train", task * args["increment"], (task + 1) * args["increment"])
+
+        # Train
+        start_time = time.time()
+        model.train_task(train_loader, val_loader)
+        end_time = time.time()
+        results["profile"][task]["train_task"] = end_time-start_time
+
+
+        # After task
+        start_time = time.time()
+        model.after_task(train_loader)
+        end_time = time.time()
+        results["profile"][task]["after_task"] = end_time-start_time
+
+        # compute_accuracy task
+        start_time = time.time()
         ypred, ytrue = model.eval_task(test_loader)
+        end_time = time.time()
+        results["profile"][task]["compute_accuracy"] = end_time-start_time
+        print("Profiling: ", results["profile"][task])
+
         acc_stats = utils.compute_accuracy(ypred, ytrue, task_size=args["increment"])
         print(acc_stats)
         results["results"].append(acc_stats)

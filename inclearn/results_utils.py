@@ -9,7 +9,7 @@ from inclearn import utils
 
 
 def get_template_results(args):
-    return {"config": args, "results": []}
+    return {"config": args, "results": [], "profile": {}}
 
 
 def save_results(results, label):
