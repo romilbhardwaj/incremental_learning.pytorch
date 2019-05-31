@@ -1,4 +1,6 @@
 import copy
+import json
+import pprint
 import random
 import time
 
@@ -6,6 +8,7 @@ import numpy as np
 import torch
 
 from inclearn import factory, results_utils, utils
+from inclearn.results_utils import get_profile_dict
 
 
 def train(args):
@@ -35,6 +38,7 @@ def _train(args):
     results = results_utils.get_template_results(args)
 
     for task in range(0, train_set.total_n_classes // args["increment"]):
+        task_start_time = time.time()
         if args["max_task"] == task:
             break
 
@@ -53,31 +57,31 @@ def _train(args):
 
         # Before Task
         start_time = time.time()
-        model.before_task(train_loader, val_loader)
+        subprofile = model.before_task(train_loader, val_loader)
         end_time = time.time()
-        results["profile"][task] = {"before_task": end_time-start_time}
+        bt_profile = get_profile_dict(end_time - start_time, subprofile)
 
         print("train", task * args["increment"], (task + 1) * args["increment"])
 
         # Train
         start_time = time.time()
-        model.train_task(train_loader, val_loader)
+        subprofile = model.train_task(train_loader, val_loader)
         end_time = time.time()
-        results["profile"][task]["train_task"] = end_time-start_time
+        train_profile = get_profile_dict(end_time - start_time, subprofile)
 
 
         # After task
         start_time = time.time()
-        model.after_task(train_loader)
+        subprofile = model.after_task(train_loader)
         end_time = time.time()
-        results["profile"][task]["after_task"] = end_time-start_time
+        at_profile = get_profile_dict(end_time - start_time, subprofile)
 
         # compute_accuracy task
         start_time = time.time()
-        ypred, ytrue = model.eval_task(test_loader)
+        ypred, ytrue, subprofile = model.eval_task(test_loader)
         end_time = time.time()
-        results["profile"][task]["compute_accuracy"] = end_time-start_time
-        print("Profiling: ", results["profile"][task])
+        eval_profile = get_profile_dict(end_time - start_time, subprofile)
+        print("Done with compute accuracy.")
 
         acc_stats = utils.compute_accuracy(ypred, ytrue, task_size=args["increment"])
         print(acc_stats)
@@ -85,6 +89,23 @@ def _train(args):
 
         memory_indexes = model.get_memory_indexes()
         train_set.set_memory(memory_indexes)
+
+        # Compute total time
+        task_end_time = time.time()
+        task_total_time = task_end_time - task_start_time
+
+
+        results["profile"][task] = get_profile_dict(task_total_time, {
+            "before_task": bt_profile,
+            "train_task": train_profile,
+            "after_task": at_profile,
+            "eval_profile": eval_profile,
+        })
+        print("Profiling for this task: ")
+        print(json.dumps(results["profile"][task], sort_keys = True, indent=4))
+
+        profiled_time = sum(k["time"] for k in results["profile"][task]["subprofile"].values())
+        print("profiled time: {}, Total time: {}".format(profiled_time, task_total_time))
 
     if args["name"]:
         results_utils.save_results(results, args["name"])

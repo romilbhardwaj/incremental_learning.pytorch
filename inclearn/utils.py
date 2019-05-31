@@ -32,4 +32,4 @@ def compute_accuracy(ypred, ytrue, task_size=10):
 
 
 def get_date():
-    return datetime.datetime.now().strftime("%Y%m%d")
+    return datetime.datetime.now().strftime("%Y%m%d-%H-%M-%S")

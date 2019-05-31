@@ -7,9 +7,15 @@ import matplotlib.pyplot as plt
 
 from inclearn import utils
 
+def get_profile_dict(time=None, subprofile=None):
+    if time is None:
+        time = -1
+    if subprofile is None:
+        subprofile = {}
+    return {"time": time, "subprofile": subprofile}   # Subprofile is {name: profile}
 
 def get_template_results(args):
-    return {"config": args, "results": [], "profile": {}}
+    return {"config": args, "results": [], "profile": get_profile_dict()}
 
 
 def save_results(results, label):
