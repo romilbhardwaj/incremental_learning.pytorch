@@ -28,7 +28,7 @@ def get_parser():
                         help="Number of class to add per task.")
     parser.add_argument("-b", "--batch-size", default=128, type=int,
                         help="Batch size.")
-    parser.add_argument("-w", "--workers", default=10, type=int,
+    parser.add_argument("-w", "--workers", default=0, type=int,
                         help="Number of workers preprocessing the data.")
     parser.add_argument("-v", "--validation", default=0., type=float,
                         help="Validation split (0. <= x <= 1.).")
