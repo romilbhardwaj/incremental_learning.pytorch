@@ -439,6 +439,7 @@ class ICarl(IncrementalLearner):
         print("Updating examplars for classes {} -> {}.".format(lo, hi))
         total_updated_exemplars = 0
         start_time = time.time()
+        feature_profile = {}
         for class_idx in range(lo, hi):
             loader.dataset.set_idxes(self._examplars[class_idx])
             _, examplar_mean, _, feature_profile = self._extract_features(loader)
@@ -456,7 +457,7 @@ class ICarl(IncrementalLearner):
         total_build_time_start = time.time()
         total_feature_extraction_time = 0
         total_distance_computation_time = 0
-
+        feature_profile = {}
         for class_idx in range(lo, hi):
             examplars_idxes = []
 
