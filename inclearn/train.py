@@ -101,6 +101,7 @@ def _train(args):
             "after_task": at_profile,
             "eval_profile": eval_profile,
         })
+        results["profile"][task]["results"] = acc_stats
         print("Profiling for this task: ")
         print(json.dumps(results["profile"][task], sort_keys = True, indent=4))
 
