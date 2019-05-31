@@ -365,15 +365,44 @@ class ICarl(IncrementalLearner):
         features = []
         idxes = []
 
+        task_start_time = time.time()
+        total_loader_time = 0
+        total_input_xfer_time = 0
+        total_feature_extract_time = 0
+
+        last_end_time = time.time()
         for (real_idxes, _), inputs, _ in loader:
+            total_loader_time += time.time() - last_end_time
+
+            # Copy to device
+            start_time = time.time()
             inputs = inputs.to(self._device)
+            end_time = time.time()
+            total_input_xfer_time += (end_time-start_time)
+
+            # Extract features
+            start_time = time.time()
             features.append(self._features_extractor(inputs).detach())
+            end_time = time.time()
+            total_feature_extract_time += (end_time - start_time)
+
             idxes.extend(real_idxes.numpy().tolist())
+
+            last_end_time = time.time()
 
         features = F.normalize(torch.cat(features), dim=1)
         mean = torch.mean(features, dim=0, keepdim=False)
 
-        return features, mean, idxes
+        task_end_time = time.time()
+
+        profiling = get_profile_dict(time=task_end_time-task_start_time, subprofile={
+            "loader_time": total_loader_time,
+            "input_xfer": total_input_xfer_time,
+            "actual_feature_extraction": total_feature_extract_time
+        })
+        profiling["total_samples"] = len(loader.dataset)
+
+        return features, mean, idxes, profiling
 
     @staticmethod
     def _remove_row(matrix, idxes, row_idx):
@@ -412,11 +441,13 @@ class ICarl(IncrementalLearner):
         start_time = time.time()
         for class_idx in range(lo, hi):
             loader.dataset.set_idxes(self._examplars[class_idx])
-            _, examplar_mean, _ = self._extract_features(loader)
+            _, examplar_mean, _, feature_profile = self._extract_features(loader)
             total_updated_exemplars += len(loader.dataset)
             means.append(F.normalize(examplar_mean, dim=0))
         end_time = time.time()
-        updating_exemplars_profile = get_profile_dict(end_time-start_time)
+        updating_exemplars_profile = get_profile_dict(end_time-start_time, subprofile={
+            "last_class_feature_extraction": feature_profile
+        })
 
         lo, hi = self._task * self._task_size, self._n_classes
         print("Building examplars for classes {} -> {}.".format(lo, hi))
@@ -433,7 +464,7 @@ class ICarl(IncrementalLearner):
             total_new_exemplars += len(loader.dataset)
 
             start_time = time.time()
-            features, class_mean, idxes = self._extract_features(loader)
+            features, class_mean, idxes, subprofile = self._extract_features(loader)
             end_time = time.time()
             total_feature_extraction_time += (end_time-start_time)
 
@@ -468,7 +499,7 @@ class ICarl(IncrementalLearner):
 
         total_build_time_end = time.time()
         new_exemplars_profile = get_profile_dict(total_build_time_end - total_build_time_start, subprofile={
-            "extract_features": get_profile_dict(total_feature_extraction_time),
+            "extract_features": get_profile_dict(total_feature_extraction_time, subprofile={"last_class_feature_extraction": subprofile}),
             "distance_compute": get_profile_dict(total_distance_computation_time),
         })
 
