@@ -45,6 +45,7 @@ def get_data(args, train=True, classes_order=None):
 
     return dataset(increment=args["increment"],
                    train=train,
+                   workers=args["workers"],
                    randomize_class=args["random_classes"],
                    classes_order=classes_order)
 
