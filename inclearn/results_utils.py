@@ -15,7 +15,7 @@ def get_profile_dict(time=None, subprofile=None):
     return {"time": time, "subprofile": subprofile}   # Subprofile is {name: profile}
 
 def get_template_results(args):
-    return {"config": args, "results": [], "profile": get_profile_dict()}
+    return {"config": args, "results": [], "profile": {}}
 
 
 def save_results(results, label):
