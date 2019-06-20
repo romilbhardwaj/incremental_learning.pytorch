@@ -31,8 +31,8 @@ class ICarl(IncrementalLearner):
         args = parser.fill_in_defaults(args)
 
         self._args = args
-        factory.set_device(args)
-        self._device = args["device"]
+        # factory.set_device(args)
+        self._device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu') #args["device"]
         self._opt_name = args["optimizer"]
         self._lr = args["lr"]
         self._weight_decay = args["weight_decay"]
