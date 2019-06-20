@@ -28,20 +28,20 @@ class IncrementalLearner(abc.ABC):
         self._n_test_data = n_test_data
         self._n_tasks = n_tasks
 
-    def before_task(self, train_loader, val_loader):
+    def before_task(self, train_loader, val_loader, **kwargs):
         LOGGER.info("Before task")
         self.eval()
-        self._before_task(train_loader, val_loader)
+        self._before_task(train_loader, val_loader, **kwargs)
 
-    def train_task(self, train_loader, val_loader):
+    def train_task(self, train_loader, val_loader, n_epochs=-1):
         LOGGER.info("train task")
         self.train()
-        self._train_task(train_loader, val_loader)
+        self._train_task(train_loader, val_loader, n_epochs)
 
-    def after_task(self, inc_dataset):
+    def after_task(self, *args, **kwargs):
         LOGGER.info("after task")
         self.eval()
-        self._after_task(inc_dataset)
+        self._after_task(*args, **kwargs)
 
     def eval_task(self, data_loader):
         LOGGER.info("eval task")
@@ -57,10 +57,22 @@ class IncrementalLearner(abc.ABC):
     def train(self):
         raise NotImplementedError
 
+    def checkpoint(self, checkpoint_path):
+        raise NotImplementedError
+
+    def restore(self, checkpoint_path):
+        raise NotImplementedError
+
+    @classmethod
+    def from_checkpoint(cls, checkpoint_path):
+        model = cls.__new__(cls)
+        model.restore(checkpoint_path)
+        return model
+
     def _before_task(self, data_loader):
         pass
 
-    def _train_task(self, train_loader, val_loader):
+    def _train_task(self, train_loader, val_loader, n_epochs):
         raise NotImplementedError
 
     def _after_task(self, data_loader):

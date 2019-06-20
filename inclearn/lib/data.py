@@ -41,6 +41,7 @@ class IncrementalDataset:
         self._batch_size = batch_size
         self._workers = workers
         self._shuffle = shuffle
+        self.increment = increment
 
     @property
     def n_tasks(self):
@@ -55,9 +56,6 @@ class IncrementalDataset:
         x_train, y_train = self._select(
             self.data_train, self.targets_train, low_range=min_class, high_range=max_class
         )
-        x_val, y_val = self._select(
-            self.data_val, self.targets_val, low_range=min_class, high_range=max_class
-        )
         x_test, y_test = self._select(self.data_test, self.targets_test, high_range=max_class)
 
         if memory is not None:
@@ -67,7 +65,6 @@ class IncrementalDataset:
             y_train = np.concatenate((y_train, targets_memory))
 
         train_loader = self._get_loader(x_train, y_train, mode="train")
-        val_loader = self._get_loader(x_val, y_val, mode="train") if len(x_val) > 0 else None
         test_loader = self._get_loader(x_test, y_test, mode="test")
 
         task_info = {
@@ -82,7 +79,7 @@ class IncrementalDataset:
 
         self._current_task += 1
 
-        return task_info, train_loader, val_loader, test_loader
+        return task_info, train_loader, test_loader
 
     def get_custom_loader(self, class_indexes, mode="test", data_source="train"):
         """Returns a custom loader.
