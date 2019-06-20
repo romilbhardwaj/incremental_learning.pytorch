@@ -52,7 +52,7 @@ def get_parser():
                         help="Number of epochs per task.")
 
     # Misc:
-    parser.add_argument("--device", default=0, type=int,
+    parser.add_argument("--device", default=-1, type=int,
                         help="GPU index to use, for cpu use -1.")
     parser.add_argument("--name", default="exp",
                         help="Experience name")
@@ -63,3 +63,18 @@ def get_parser():
 
 
     return parser
+
+def get_defaults_dict():
+    parser_instance = get_parser()
+    args = parser_instance.parse_args(args=[])
+    all_defaults = {}
+    for key in vars(args):
+        all_defaults[key] = parser_instance.get_default(key)
+    return all_defaults
+
+def fill_in_defaults(args):
+    defaults = get_defaults_dict()
+    for k,v in defaults.items():
+        if k not in args:
+            args[k] = v
+    return args

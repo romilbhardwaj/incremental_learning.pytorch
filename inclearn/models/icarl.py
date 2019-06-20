@@ -4,6 +4,7 @@ from scipy.spatial.distance import cdist
 from torch.nn import functional as F
 from tqdm import tqdm
 
+from inclearn import parser
 from inclearn.lib import factory, network, utils
 from inclearn.models.base import IncrementalLearner
 
@@ -21,9 +22,16 @@ class ICarl(IncrementalLearner):
     :param args: An argparse parsed arguments object.
     """
 
-    def __init__(self, args):
+    def __init__(self, args = None):
         super().__init__()
 
+        if args is None:
+            args = {}
+
+        args = parser.fill_in_defaults(args)
+
+        self._args = args
+        factory.set_device(args)
         self._device = args["device"]
         self._opt_name = args["optimizer"]
         self._lr = args["lr"]
@@ -46,7 +54,9 @@ class ICarl(IncrementalLearner):
         self._clf_loss = F.binary_cross_entropy_with_logits
         self._distil_loss = F.binary_cross_entropy_with_logits
 
-        self._herding_matrix = np.zeros((100, 500))  # FIXME: nb classes
+        self._herding_matrix = np.zeros((100, 5000))  # FIXME: nb classes
+
+        self._custom_serialized = ["_network", "_optimizer", "_scheduler"]
 
     def eval(self):
         self._network.eval()
@@ -58,9 +68,9 @@ class ICarl(IncrementalLearner):
     # Public API
     # ----------
 
-    def _before_task(self, train_loader, val_loader):
-        self._n_classes += self._task_size
-        self._network.add_classes(self._task_size)
+    def _before_task(self, train_loader, val_loader, new_classes_count):
+        self._n_classes += new_classes_count
+        self._network.add_classes(new_classes_count)
         print("Now {} examplars per class.".format(self._memory_per_class))
 
         self._optimizer = factory.get_optimizer(
@@ -71,10 +81,11 @@ class ICarl(IncrementalLearner):
             self._optimizer, self._scheduling, gamma=self._lr_decay
         )
 
-    def _train_task(self, train_loader, val_loader):
+    def _train_task(self, train_loader, val_loader = None, n_epochs = -1):
         print("nb ", len(train_loader.dataset))
 
-        for epoch in range(self._n_epochs):
+        epochs = n_epochs if n_epochs > 0 else self._n_epochs
+        for epoch in range(epochs):
             _loss = 0.
 
             self._scheduler.step()
@@ -102,14 +113,15 @@ class ICarl(IncrementalLearner):
 
                 prog_bar.set_description(
                     "Task {}/{}, Epoch {}/{} => Clf loss: {}".format(
-                        self._task + 1, self._n_tasks,
-                        epoch + 1, self._n_epochs,
+                        "?", "?",
+                        epoch + 1, epochs,
                         round(_loss / c, 3)
                     )
                 )
+                break
 
-    def _after_task(self, inc_dataset):
-        self.build_examplars(inc_dataset)
+    def _after_task(self, train_loader, flipped_loader):
+        self.build_examplars_simple(train_loader, flipped_loader)
 
         self._old_model = self._network.copy().freeze()
 
@@ -136,7 +148,7 @@ class ICarl(IncrementalLearner):
         return loss
 
     def _compute_predictions(self, data_loader):
-        preds = torch.zeros(self._n_train_data, self._n_classes, device=self._device)
+        preds = torch.zeros(len(data_loader.dataset), self._n_classes, device=self._device)
 
         for idxes, inputs, _ in data_loader:
             inputs = inputs.to(self._device)
@@ -211,8 +223,73 @@ class ICarl(IncrementalLearner):
         self._data_memory = np.concatenate(self._data_memory)
         self._targets_memory = np.concatenate(self._targets_memory)
 
+
+    def build_examplars_simple(self, train_loader, flipped_loader):
+        self._data_memory, self._targets_memory = [], []
+        self._class_means = np.zeros((100, self._network.features_dim))
+        inputs = train_loader.dataset.x
+
+        for class_idx in range(self._n_classes):
+            features, targets = extract_features(
+                self._network, train_loader
+            )
+            features_flipped, _ = extract_features(
+                self._network, flipped_loader
+            )
+
+            if class_idx >= self._n_classes - self._task_size:
+                print("Finding examplars for", class_idx)
+                self._herding_matrix[class_idx, :] = select_examplars(
+                    features, self._memory_per_class
+                )
+
+            examplar_mean, alph = compute_examplar_mean(
+                features, features_flipped, self._herding_matrix[class_idx], self._memory_per_class
+            )
+            self._data_memory.append(inputs[np.where(alph == 1)[0]])
+            self._targets_memory.append(targets[np.where(alph == 1)[0]])
+
+            self._class_means[class_idx, :] = examplar_mean
+
+        self._data_memory = np.concatenate(self._data_memory)
+        self._targets_memory = np.concatenate(self._targets_memory)
+
     def get_memory(self):
         return self._data_memory, self._targets_memory
+
+    def checkpoint(self, checkpoint_path):
+        model_state = {}
+
+        # Save state_dicts for pytorch objects
+        model_state["_network"] = self._network.state_dict()
+        model_state["_optimizer"] = self._optimizer.state_dict()
+        model_state["_scheduler"] = self._scheduler.state_dict()
+
+        # Save everything else
+        for key, value in vars(self).items():
+            if key not in self._custom_serialized:
+                model_state[key] = value
+        torch.save(model_state, checkpoint_path)
+
+    def restore(self, checkpoint_path):
+        model_state = torch.load(checkpoint_path)
+
+        self._args = model_state["_args"]
+
+        for key, value in model_state.items():
+            if key not in model_state["_custom_serialized"]:
+                self.__setattr__(key, value)
+
+        self._network = network.BasicNet(self._args["convnet"], device=self._device, use_bias=True)
+        self._network.add_classes(self._n_classes)
+        self._network.load_state_dict(model_state["_network"])
+
+
+        self._optimizer = factory.get_optimizer(self._network.parameters(), self._opt_name, self._lr, self._weight_decay)
+        self._optimizer.load_state_dict(model_state["_optimizer"])
+
+        self._scheduler = torch.optim.lr_scheduler.MultiStepLR(self._optimizer, self._scheduling, gamma=self._lr_decay)
+        self._scheduler.load_state_dict(model_state["_scheduler"])
 
 
 def extract_features(model, loader):

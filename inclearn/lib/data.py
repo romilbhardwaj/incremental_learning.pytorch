@@ -34,6 +34,7 @@ class IncrementalDataset:
         self._batch_size = batch_size
         self._workers = workers
         self._shuffle = shuffle
+        self.increment = increment
 
     @property
     def n_tasks(self):
@@ -73,11 +74,12 @@ class IncrementalDataset:
 
         return task_info, train_loader, test_loader
 
-    def get_class_loader(self, class_idx, mode="test"):
+    def get_class_loader(self, class_idx, high_range=None, mode="test", shuffle=False):
+        high_range = high_range if high_range is not None else class_idx + self.increment
         x, y = self._select(
-            self.data_train, self.targets_train, low_range=class_idx, high_range=class_idx + 1
+            self.data_train, self.targets_train, low_range=class_idx, high_range=high_range
         )
-        return x, self._get_loader(x, y, shuffle=False, mode=mode)
+        return x, self._get_loader(x, y, shuffle=shuffle, mode=mode)
 
     def _select(self, x, y, low_range=0, high_range=0):
         idxes = np.where(np.logical_and(y >= low_range, y < high_range))[0]
