@@ -118,7 +118,6 @@ class ICarl(IncrementalLearner):
                         round(_loss / c, 3)
                     )
                 )
-                break
 
     def _after_task(self, train_loader, flipped_loader):
         self.build_examplars_simple(train_loader, flipped_loader)
