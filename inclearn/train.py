@@ -18,7 +18,7 @@ def train(args):
 
         start_time = time.time()
         _train(args)
-        print("Training finished in {}s.".format(time.time() - start_time))
+        print("Training finished in {}s.".format(int(time.time() - start_time)))
 
 
 def _train(args):
@@ -36,7 +36,7 @@ def _train(args):
     memory = None
 
     for _ in range(inc_dataset.n_tasks):
-        task_info, train_loader, test_loader = inc_dataset.new_task(memory)
+        task_info, train_loader, val_loader, test_loader = inc_dataset.new_task(memory)
         if task_info["task"] == args["max_task"]:
             break
 
@@ -50,10 +50,10 @@ def _train(args):
         )
 
         model.eval()
-        model.before_task(train_loader, None)
+        model.before_task(train_loader, val_loader)
         print("Train on {}->{}.".format(task_info["min_class"], task_info["max_class"]))
         model.train()
-        model.train_task(train_loader, None)
+        model.train_task(train_loader, val_loader)
         model.eval()
         model.after_task(inc_dataset)
 
@@ -64,6 +64,12 @@ def _train(args):
         results["results"].append(acc_stats)
 
         memory = model.get_memory()
+
+    print(
+        "Average Incremental Accuracy: {}.".format(
+            results_utils.compute_avg_inc_acc(results["results"])
+        )
+    )
 
     if args["name"]:
         results_utils.save_results(results, args["name"])
