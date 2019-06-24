@@ -81,7 +81,7 @@ class IncrementalDataset:
 
         return task_info, train_loader, test_loader
 
-    def get_custom_loader(self, class_indexes, mode="test", data_source="train"):
+    def get_custom_loader(self, class_indexes, high_range=None, mode="test", data_source="train", shuffle=False):
         """Returns a custom loader.
 
         :param class_indexes: A list of class indexes that we want.
@@ -91,6 +91,8 @@ class IncrementalDataset:
         """
         if not isinstance(class_indexes, list):  # TODO: deprecated, should always give a list
             class_indexes = [class_indexes]
+
+        high_range = high_range if high_range is not None else class_indexes[0] + self.increment    # TODO: FIXME TO USE LISTS
 
         if data_source == "train":
             x, y = self.data_train, self.targets_train
@@ -104,7 +106,7 @@ class IncrementalDataset:
         data, targets = [], []
         for class_index in class_indexes:
             class_data, class_targets = self._select(
-                x, y, low_range=class_index, high_range=class_index + 1
+                x, y, low_range=class_index, high_range=high_range
             )
             data.append(class_data)
             targets.append(class_targets)
@@ -112,7 +114,7 @@ class IncrementalDataset:
         data = np.concatenate(data)
         targets = np.concatenate(targets)
 
-        return data, self._get_loader(data, targets, shuffle=False, mode=mode)
+        return data, self._get_loader(data, targets, shuffle=shuffle, mode=mode)
 
     def _select(self, x, y, low_range=0, high_range=0):
         idxes = np.where(np.logical_and(y >= low_range, y < high_range))[0]

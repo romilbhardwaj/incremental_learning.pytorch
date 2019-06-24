@@ -33,6 +33,7 @@ class ICarl(IncrementalLearner):
         self._args = args
         # factory.set_device(args)
         self._device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu') #args["device"]
+        print("Using device: {}".format(str(self._device)))
         self._opt_name = args["optimizer"]
         self._lr = args["lr"]
         self._weight_decay = args["weight_decay"]
@@ -54,7 +55,7 @@ class ICarl(IncrementalLearner):
         self._clf_loss = F.binary_cross_entropy_with_logits
         self._distil_loss = F.binary_cross_entropy_with_logits
 
-        self._herding_matrix = []
+        self._herding_matrix = {}
 
         self._custom_serialized = ["_network", "_optimizer", "_scheduler"]
 
@@ -71,6 +72,7 @@ class ICarl(IncrementalLearner):
     def _before_task(self, train_loader, val_loader, new_classes_count):
         self._n_classes += new_classes_count
         self._network.add_classes(new_classes_count)
+        self._task_size = new_classes_count
         print("Now {} examplars per class.".format(self._memory_per_class))
 
         self._optimizer = factory.get_optimizer(
@@ -198,37 +200,37 @@ class ICarl(IncrementalLearner):
     # Memory management
     # -----------------
 
-    def build_examplars(self, inc_dataset):
-        print("Building & updating memory.")
-
-        self._data_memory, self._targets_memory = [], []
-        self._class_means = np.zeros((100, self._network.features_dim))
-
-        for class_idx in range(self._n_classes):
-            inputs, loader = inc_dataset.get_custom_loader(class_idx, mode="test")
-            features, targets = extract_features(
-                self._network, loader
-            )
-            features_flipped, _ = extract_features(
-                self._network, inc_dataset.get_custom_loader(class_idx, mode="flip")[1]
-            )
-
-            if class_idx >= self._n_classes - self._task_size:
-                print("Finding examplars for", class_idx)
-                self._herding_matrix[class_idx, :] = select_examplars(
-                    features, self._memory_per_class
-                )
-
-            examplar_mean, alph = compute_examplar_mean(
-                features, features_flipped, self._herding_matrix[class_idx], self._memory_per_class
-            )
-            self._data_memory.append(inputs[np.where(alph == 1)[0]])
-            self._targets_memory.append(targets[np.where(alph == 1)[0]])
-
-            self._class_means[class_idx, :] = examplar_mean
-
-        self._data_memory = np.concatenate(self._data_memory)
-        self._targets_memory = np.concatenate(self._targets_memory)
+    # def build_examplars(self, inc_dataset):
+    #     print("Building & updating memory.")
+    #
+    #     self._data_memory, self._targets_memory = [], []
+    #     self._class_means = np.zeros((100, self._network.features_dim))
+    #
+    #     for class_idx in range(self._n_classes):
+    #         inputs, loader = inc_dataset.get_custom_loader(class_idx, mode="test")
+    #         features, targets = extract_features(
+    #             self._network, loader
+    #         )
+    #         features_flipped, _ = extract_features(
+    #             self._network, inc_dataset.get_custom_loader(class_idx, mode="flip")[1]
+    #         )
+    #
+    #         if class_idx >= self._n_classes - self._task_size:
+    #             print("Finding examplars for", class_idx)
+    #             self._herding_matrix[class_idx, :] = select_examplars(
+    #                 features, self._memory_per_class
+    #             )
+    #
+    #         examplar_mean, alph = compute_examplar_mean(
+    #             features, features_flipped, self._herding_matrix[class_idx], self._memory_per_class
+    #         )
+    #         self._data_memory.append(inputs[np.where(alph == 1)[0]])
+    #         self._targets_memory.append(targets[np.where(alph == 1)[0]])
+    #
+    #         self._class_means[class_idx, :] = examplar_mean
+    #
+    #     self._data_memory = np.concatenate(self._data_memory)
+    #     self._targets_memory = np.concatenate(self._targets_memory)
 
 
     def build_examplars_simple(self, train_loader, flipped_loader):
@@ -248,7 +250,7 @@ class ICarl(IncrementalLearner):
 
             if class_idx >= self._n_classes - self._task_size:
                 print("Finding examplars for", class_idx)
-                self._herding_matrix[class_idx, :] = select_examplars(
+                self._herding_matrix[class_idx] = select_examplars(
                     features, self._memory_per_class
                 )
 
