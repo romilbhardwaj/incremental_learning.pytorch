@@ -52,7 +52,7 @@ def get_parser():
                         help="Number of epochs per task.")
 
     # Misc:
-    parser.add_argument("--device", default=-1, type=int,
+    parser.add_argument("--device", default=0, type=int,
                         help="GPU index to use, for cpu use -1.")
     parser.add_argument("--name", default="exp",
                         help="Experience name")

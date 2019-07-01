@@ -20,6 +20,8 @@ def get_convnet(convnet_type, **kwargs):
         return resnet.resnet18(**kwargs)
     elif convnet_type == "resnet34":
         return resnet.resnet34(**kwargs)
+    elif convnet_type == "resnet50":
+        return resnet.resnet50(**kwargs)
     elif convnet_type == "rebuffi":
         return my_resnet.resnet_rebuffi()
     elif convnet_type == "densenet121":

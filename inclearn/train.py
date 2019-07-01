@@ -36,18 +36,20 @@ def _train(args):
     memory = None
 
     for _ in range(inc_dataset.n_tasks):
-        task_info, train_loader, val_loader, test_loader = inc_dataset.new_task(memory)
+        task_info, train_loader, val_loader, test_loader = inc_dataset.new_task(None)   # Using no memory
         if task_info["task"] == args["max_task"]:
             break
 
-        model.set_task_info(
-            task=task_info["task"],
-            total_n_classes=task_info["max_class"],
-            increment=task_info["increment"],
-            n_train_data=task_info["n_train_data"],
-            n_test_data=task_info["n_test_data"],
-            n_tasks=task_info["max_task"]
-        )
+        # model.set_task_info(
+        #     task=task_info["task"],
+        #     total_n_classes=task_info["max_class"],
+        #     increment=task_info["increment"],
+        #     n_train_data=task_info["n_train_data"],
+        #     n_test_data=task_info["n_test_data"],
+        #     n_tasks=task_info["max_task"]
+        # )
+
+        model._task_size = 10
 
         model.eval()
         model.before_task(train_loader, val_loader)
@@ -63,7 +65,7 @@ def _train(args):
         print(acc_stats)
         results["results"].append(acc_stats)
 
-        memory = model.get_memory()
+        # memory = model.get_memory()
 
     print(
         "Average Incremental Accuracy: {}.".format(
