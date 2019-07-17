@@ -23,15 +23,18 @@ class IncrementalDataset:
         batch_size=128,
         seed=1,
         increment=10,
-        validation_split=0.
+        validation_split=0.,
+        subsample_dataset=1
     ):
+        self.subsample_dataset = subsample_dataset
         datasets = _get_datasets(dataset_name)
         self._setup_data(
             datasets,
             random_order=random_order,
             seed=seed,
             increment=increment,
-            validation_split=validation_split
+            validation_split=validation_split,
+            subsample_dataset=subsample_dataset
         )
         self.train_transforms = datasets[0].train_transforms  # FIXME handle multiple datasets
         self.common_transforms = datasets[0].common_transforms
@@ -140,7 +143,7 @@ class IncrementalDataset:
             num_workers=self._workers
         )
 
-    def _setup_data(self, datasets, random_order=False, seed=1, increment=10, validation_split=0.):
+    def _setup_data(self, datasets, random_order=False, seed=1, increment=10, validation_split=0., subsample_dataset=1):
         # FIXME: handles online loading of images
         self.data_train, self.targets_train = [], []
         self.data_test, self.targets_test = [], []
@@ -181,6 +184,12 @@ class IncrementalDataset:
                 self.increments.append(len(order))
             else:
                 self.increments = [increment for _ in range(len(order) // increment)]
+
+
+            if subsample_dataset < 1:
+                idxes = np.random.choice(np.arange(len(y_train)), int(len(y_train)*subsample_dataset), replace=False)
+                y_train = y_train[idxes]
+                x_train = x_train[idxes]
 
             self.data_train.append(x_train)
             self.targets_train.append(y_train)

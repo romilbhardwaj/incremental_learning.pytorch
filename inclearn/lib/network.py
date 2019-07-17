@@ -48,6 +48,20 @@ class BasicNet(nn.Module):
     def extract(self, x):
         return self.convnet(x)
 
+
+    def freeze_conv(self, layers_to_freeze):
+        # Good values for layers to freeze for resnet50 - 5,6,7
+        child_counter = 0
+        for child in self.convnet.children():
+            if child_counter < layers_to_freeze:
+                print("child ", child_counter, " was frozen")
+                for param in child.parameters():
+                    param.requires_grad = False
+            else:
+                print("child ", child_counter, " was not frozen")
+            child_counter += 1
+
+
     def freeze(self):
         for param in self.parameters():
             param.requires_grad = False

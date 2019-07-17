@@ -77,49 +77,54 @@ class ICarl(IncrementalLearner):
         print("Now {} examplars per class.".format(self._memory_per_class))
 
         self._optimizer = factory.get_optimizer(
-            self._network.parameters(), self._opt_name, self._lr, self._weight_decay
+            filter(lambda p: p.requires_grad, self._network.parameters()), self._opt_name, self._lr, self._weight_decay
         )
 
         self._scheduler = torch.optim.lr_scheduler.MultiStepLR(
             self._optimizer, self._scheduling, gamma=self._lr_decay
         )
 
-    def _train_task(self, train_loader, val_loader = None, n_epochs = -1):
-        print("nb ", len(train_loader.dataset))
-
+    def _train_task(self, *args, n_epochs=1, **kwargs):
         epochs = n_epochs if n_epochs > 0 else self._n_epochs
+        result = None
         for epoch in range(epochs):
-            _loss, val_loss = 0., 0.
+            print("Epoch: {}/{}".format(epoch, epochs))
+            result = self._train_epoch(*args, **kwargs)
+        return result
 
-            self._scheduler.step()
+    def _train_epoch(self, train_loader, val_loader = None):
+        _loss, val_loss = 0., 0.
 
-            prog_bar = tqdm(train_loader)
-            for i, (inputs, targets) in enumerate(prog_bar, start=1):
-                self._optimizer.zero_grad()
+        self._scheduler.step()
 
-                loss = self._forward_loss(inputs, targets)
+        prog_bar = tqdm(train_loader)
+        for i, (inputs, targets) in enumerate(prog_bar, start=1):
+            self._optimizer.zero_grad()
 
-                if not utils._check_loss(loss):
-                    import pdb
-                    pdb.set_trace()
+            loss = self._forward_loss(inputs, targets)
 
-                loss.backward()
-                self._optimizer.step()
+            if not utils._check_loss(loss):
+                import pdb
+                pdb.set_trace()
 
-                _loss += loss.item()
+            loss.backward()
+            self._optimizer.step()
 
-                if val_loader is not None and i == len(train_loader):
-                    for inputs, targets in val_loader:
-                        val_loss += self._forward_loss(inputs, targets).item()
+            _loss += loss.item()
 
-                prog_bar.set_description(
-                    "Task {}/{}, Epoch {}/{} => Clf loss: {}, Val loss: {}".format(
-                        "?", "?",
-                        epoch + 1, epochs,
-                        round(_loss / i, 3),
-                        round(val_loss, 3)
-                    )
+            if val_loader is not None and i == len(train_loader):
+                for inputs, targets in val_loader:
+                    val_loss += self._forward_loss(inputs, targets).item()
+
+            prog_bar.set_description(
+                "Task {}/{}, Epoch {}/{} => Clf loss: {}, Val loss: {}".format(
+                    "?", "?",
+                    "?", "?",
+                    round(_loss / i, 3),
+                    round(val_loss, 3)
                 )
+            )
+        return _loss / i, val_loss
 
     def _forward_loss(self, inputs, targets):
         inputs, targets = inputs.to(self._device), targets.to(self._device)
@@ -263,11 +268,18 @@ class ICarl(IncrementalLearner):
         self._network.load_state_dict(model_state["_network"])
 
 
-        self._optimizer = factory.get_optimizer(self._network.parameters(), self._opt_name, self._lr, self._weight_decay)
+        self._optimizer = factory.get_optimizer(filter(lambda p: p.requires_grad, self._network.parameters()), self._opt_name, self._lr, self._weight_decay)
         self._optimizer.load_state_dict(model_state["_optimizer"])
 
         self._scheduler = torch.optim.lr_scheduler.MultiStepLR(self._optimizer, self._scheduling, gamma=self._lr_decay)
         self._scheduler.load_state_dict(model_state["_scheduler"])
+
+    def freeze_layers(self, layers_to_freeze = 7):
+        self._network.freeze_conv(layers_to_freeze)
+        # update optimizer
+        self._optimizer = factory.get_optimizer(
+            filter(lambda p: p.requires_grad, self._network.parameters()), self._opt_name, self._lr, self._weight_decay
+        )
 
 
 def extract_features(model, loader):
@@ -342,7 +354,6 @@ def compute_accuracy(model, loader, class_means):
         for ll, best in zip(targets_.astype('int32'),
                             np.argsort(score_icarl, axis=1)[:, -1:])
     ]
-
     #print("stats ", np.average(stat_icarl))
 
     return np.argsort(score_icarl, axis=1)[:, -1], targets_
