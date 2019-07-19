@@ -57,9 +57,10 @@ def _train(args):
         model.train()
         model.train_task(train_loader, val_loader)
         model.eval()
-        model.after_task(inc_dataset)
+        model.after_task(train_loader)
 
         print("Eval on {}->{}.".format(0, task_info["max_class"]))
+        print("Test classes:{}".format(np.unique(test_loader.dataset.y)))
         ypred, ytrue = model.eval_task(test_loader)
         acc_stats = utils.compute_accuracy(ypred, ytrue, task_size=args["increment"])
         print(acc_stats)

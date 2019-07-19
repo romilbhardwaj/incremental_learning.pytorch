@@ -4,9 +4,13 @@ import numpy as np
 import torch
 
 
-def to_onehot(targets, n_classes):
+def to_onehot(targets, n_classes, label_map=None):
     onehot = torch.zeros(targets.shape[0], n_classes).to(targets.device)
-    onehot.scatter_(dim=1, index=targets.long().view(-1, 1), value=1.)
+    update_index = targets.long().view(-1, 1)
+    if label_map:
+        for i in range(0, len(update_index)):
+            update_index[i][0] = label_map[update_index[i][0].item()]
+    onehot.scatter_(dim=1, index=update_index, value=1.)
     return onehot
 
 

@@ -258,6 +258,61 @@ class DummyDataset(torch.utils.data.Dataset):
 
         return x, y
 
+    def get_custom_loader(self, class_indexes, mode="test", batch_size=128, num_workers=0, shuffle=False, transform_src="icifar"):
+        """Returns a custom loader.
+
+        :param class_indexes: A list of class indexes that we want.
+        :param mode: Various mode for the transformations applied on it.
+        :param data_source: Whether to fetch from the train, val, or test set.
+        :return: The raw data and a loader.
+        """
+        if not isinstance(class_indexes, list):  # TODO: deprecated, should always give a list
+            class_indexes = [class_indexes]
+
+        x = self.x
+        y = self.y
+
+        data, targets = [], []
+        for class_index in class_indexes:
+            class_data, class_targets = _select(
+                x, y, low_range=class_index, high_range=class_index + 1
+            )
+            data.append(class_data)
+            targets.append(class_targets)
+
+        data = np.concatenate(data)
+        targets = np.concatenate(targets)
+
+        return data, _get_loader(data, targets, batch_size, num_workers, shuffle=shuffle, mode=mode, transform_src=transform_src)
+
+def _get_loader(x, y, batch_size, workers=0, shuffle=True, mode="train", transform_src="icifar"):
+    if transform_src == "icifar":
+        train_transforms = iCIFAR100.train_transforms
+        common_transforms = iCIFAR100.common_transforms
+    else:
+        raise NotImplementedError("Transform family not supported")
+
+    if mode == "train":
+        trsf = transforms.Compose([*train_transforms, *common_transforms])
+    elif mode == "test":
+        trsf = transforms.Compose(common_transforms)
+    elif mode == "flip":
+        trsf = transforms.Compose(
+            [transforms.RandomHorizontalFlip(p=1.), *common_transforms]
+        )
+    else:
+        raise NotImplementedError("Unknown mode {}.".format(mode))
+
+    return DataLoader(
+        DummyDataset(x, y, trsf),
+        batch_size=batch_size,
+        shuffle=shuffle,
+        num_workers=workers
+    )
+
+def _select(x, y, low_range=0, high_range=0):
+    idxes = np.where(np.logical_and(y >= low_range, y < high_range))[0]
+    return x[idxes], y[idxes]
 
 def _get_datasets(dataset_names):
     return [_get_dataset(dataset_name) for dataset_name in dataset_names.split("-")]

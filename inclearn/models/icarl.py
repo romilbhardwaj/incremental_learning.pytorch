@@ -6,6 +6,7 @@ from tqdm import tqdm
 
 from inclearn import parser
 from inclearn.lib import factory, network, utils
+from inclearn.lib.data import DummyDataset
 from inclearn.models.base import IncrementalLearner
 
 EPSILON = 1e-8
@@ -43,7 +44,10 @@ class ICarl(IncrementalLearner):
         self._lr_decay = args["lr_decay"]
 
         self._memory_size = args["memory_size"]
-        self._n_classes = 0
+
+        self._new_classes = set()
+        self._trained_classes = set()
+        self._label_to_convclass_map = {}   # Maps the real labels to the convnet class
 
         self._network = network.BasicNet(args["convnet"], device=self._device, use_bias=True)
 
@@ -55,7 +59,8 @@ class ICarl(IncrementalLearner):
         self._clf_loss = F.binary_cross_entropy_with_logits
         self._distil_loss = F.binary_cross_entropy_with_logits
 
-        self._herding_matrix = []
+        self._herding_matrix = {}
+        self._exemplar_memory = {}
 
         self._custom_serialized = ["_network", "_optimizer", "_scheduler"]
 
@@ -69,11 +74,26 @@ class ICarl(IncrementalLearner):
     # Public API
     # ----------
 
-    def _before_task(self, train_loader, val_loader, new_classes_count = None):
-        new_classes_count = new_classes_count if new_classes_count is not None else self._task_size
-        self._n_classes += new_classes_count
-        self._network.add_classes(new_classes_count)
-        self._task_size = new_classes_count
+    @property
+    def _new_classes_count(self):
+        return len(self._new_classes)
+
+    @property
+    def _trained_classes_count(self):
+        return len(self._trained_classes)
+
+    @property
+    def _total_classes_count(self):
+        return self._new_classes_count + self._trained_classes_count
+
+    def _before_task(self, train_loader, new_classes_count = None):
+        trainloader_classes = set(train_loader.dataset.y)
+        self._new_classes = trainloader_classes - self._trained_classes
+        # Update label map for new classes
+        for class_label in self._new_classes:
+            self._label_to_convclass_map[class_label] = len(self._label_to_convclass_map)
+
+        self._network.add_classes(self._new_classes_count)
         print("Now {} examplars per class.".format(self._memory_per_class))
 
         self._optimizer = factory.get_optimizer(
@@ -124,19 +144,24 @@ class ICarl(IncrementalLearner):
                     round(val_loss, 3)
                 )
             )
+            print("Remove me")
+            break
         return _loss / i, val_loss
 
     def _forward_loss(self, inputs, targets):
         inputs, targets = inputs.to(self._device), targets.to(self._device)
-        targets = utils.to_onehot(targets, self._n_classes).to(self._device)
+        targets = utils.to_onehot(targets, self._total_classes_count, label_map=self._label_to_convclass_map).to(self._device)
         logits = self._network(inputs)
 
         return self._compute_loss(inputs, logits, targets)
 
-    def _after_task(self, inc_dataset):
-        self.build_examplars(inc_dataset)
+    def _after_task(self, train_loader):
+        self.build_examplars(train_loader)
 
         self._old_model = self._network.copy().freeze()
+
+        self._trained_classes = self._trained_classes.union(self._new_classes)
+        self._new_classes = set()
 
     def _eval_task(self, data_loader):
         ypred, ytrue = compute_accuracy(self._network, data_loader, self._class_means)
@@ -154,14 +179,14 @@ class ICarl(IncrementalLearner):
             old_targets = torch.sigmoid(self._old_model(inputs).detach())
 
             new_targets = targets.clone()
-            new_targets[..., :-self._task_size] = old_targets
+            new_targets[..., :-self._new_classes_count] = old_targets
 
             loss = F.binary_cross_entropy_with_logits(logits, new_targets)
 
         return loss
 
     def _compute_predictions(self, data_loader):
-        preds = torch.zeros(len(data_loader.dataset), self._n_classes, device=self._device)
+        preds = torch.zeros(len(data_loader.dataset), self.total_classes_count, device=self._device)
 
         for idxes, inputs, _ in data_loader:
             inputs = inputs.to(self._device)
@@ -177,10 +202,10 @@ class ICarl(IncrementalLearner):
                 "Cannot classify without built examplar means,"
                 " Have you forgotten to call `before_task`?"
             )
-        if self._means.shape[0] != self._n_classes:
+        if self._means.shape[0] != self.total_classes_count:
             raise ValueError(
                 "The number of examplar means ({}) is inconsistent".format(self._means.shape[0]) +
-                " with the number of classes ({}).".format(self._n_classes)
+                " with the number of classes ({}).".format(self.total_classes_count)
             )
 
         ypred = []
@@ -200,44 +225,73 @@ class ICarl(IncrementalLearner):
     @property
     def _memory_per_class(self):
         """Returns the number of examplars per class."""
-        return self._memory_size // self._n_classes
+        return self._memory_size // self._total_classes_count
 
     # -----------------
     # Memory management
     # -----------------
 
-    def build_examplars(self, inc_dataset):
+    def get_merged_dataset(self, class_exemplars, current_dataset):
+        if class_exemplars is None:
+            x = current_dataset.x
+            y = current_dataset.y
+        else:
+            exemplar_x, exemplar_y = class_exemplars
+            x = np.concatenate((current_dataset.x, exemplar_x))
+            y = np.concatenate((current_dataset.y, exemplar_y))
+        print("Merged shape: {}".format(x.shape))
+        return DummyDataset(x,y, trsf=current_dataset.trsf)
+
+    def build_examplars(self, train_loader):
         print("Building & updating memory.")
 
         self._data_memory, self._targets_memory = [], []
-        self._class_means = np.zeros((100, self._network.features_dim))
+        self._class_means = np.zeros((100, self._network.features_dim)) # We must reconstruct the means at every iteration
+        current_dataset = train_loader.dataset
 
-        for class_idx in range(self._n_classes):
-            inputs, loader = inc_dataset.get_custom_loader(class_idx, mode="test")
+        for class_idx in self._trained_classes.union(self._new_classes):
+            class_merged_dataset = self.get_merged_dataset(self._exemplar_memory.get(class_idx, None), current_dataset)
+            inputs, loader = class_merged_dataset.get_custom_loader(class_idx, mode="test")
+            input_classes = loader.dataset.y
+            print("Loader size: {}".format(len(loader.dataset)))
             features, targets = extract_features(
                 self._network, loader
             )
             features_flipped, _ = extract_features(
-                self._network, inc_dataset.get_custom_loader(class_idx, mode="flip")[1]
+                self._network, class_merged_dataset.get_custom_loader(class_idx, mode="flip")[1]
             )
 
-            if class_idx >= self._n_classes - self._task_size:
-                self._herding_matrix.append(select_examplars(
-                    features, self._memory_per_class
-                ))
+            # if class_idx in self._exemplar_features_memory:
+            #     print("Found memory.")
+            #     features = np.concatenate(features, self._exemplar_features_memory[class_idx])
+            #     features_flipped = np.concatenate(features_flipped, self._exemplar_features_memory_flipped[class_idx])
+
+            # if class_idx not in self._trained_classes:  # TODO: Run this for all data
+            self._herding_matrix[class_idx] = select_examplars(
+                features, self._memory_per_class
+                )
 
             examplar_mean, alph = compute_examplar_mean(
                 features, features_flipped, self._herding_matrix[class_idx], self._memory_per_class
             )
-            self._data_memory.append(inputs[np.where(alph == 1)[0]])
-            self._targets_memory.append(targets[np.where(alph == 1)[0]])
+
+
+
+            #TODO: Check the size of alph and the count of alph==1
+            # self._data_memory.append(inputs[np.where(alph == 1)[0]])
+            # self._targets_memory.append(targets[np.where(alph == 1)[0]])
+
+            self._exemplar_memory[class_idx] = (inputs[np.where(alph == 1)[0]], input_classes[np.where(alph == 1)[0]])
+
 
             self._class_means[class_idx, :] = examplar_mean
 
-        self._data_memory = np.concatenate(self._data_memory)
-        self._targets_memory = np.concatenate(self._targets_memory)
+        # self._data_memory = np.concatenate(self._data_memory)
+        # self._targets_memory = np.concatenate(self._targets_memory)
+        print(self._class_means)
 
     def get_memory(self):
+        raise NotImplementedError("Disabled because memory no longer stored in build_exemplars")
         return self._data_memory, self._targets_memory
 
     def checkpoint(self, checkpoint_path):
@@ -264,7 +318,7 @@ class ICarl(IncrementalLearner):
                 self.__setattr__(key, value)
 
         self._network = network.BasicNet(self._args["convnet"], device=self._device, use_bias=True)
-        self._network.add_classes(self._n_classes)
+        self._network.add_classes(self.total_classes_count)
         self._network.load_state_dict(model_state["_network"])
 
 
