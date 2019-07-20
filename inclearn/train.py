@@ -55,7 +55,7 @@ def _train(args):
         model.before_task(train_loader, val_loader)
         print("Train on {}->{}.".format(task_info["min_class"], task_info["max_class"]))
         model.train()
-        model.train_task(train_loader, val_loader)
+        model.train_task(train_loader, val_loader, n_epochs = args["epochs"])
         model.eval()
         model.after_task(train_loader)
 

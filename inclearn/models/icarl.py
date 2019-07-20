@@ -144,8 +144,6 @@ class ICarl(IncrementalLearner):
                     round(val_loss, 3)
                 )
             )
-            print("Remove me")
-            break
         return _loss / i, val_loss
 
     def _forward_loss(self, inputs, targets):
@@ -166,20 +164,28 @@ class ICarl(IncrementalLearner):
     def _eval_task(self, data_loader):
         ypred, ytrue = compute_accuracy(self._network, data_loader, self._class_means)
 
+
         return ypred, ytrue
 
     # -----------
     # Private API
     # -----------
 
-    def _compute_loss(self, inputs, logits, targets):
+    def _compute_loss(self, inputs, logits, targets, old_sample_weight = 0.5):
         if self._old_model is None:
+            # print("No old model found for loss computing, using direct loss")
             loss = F.binary_cross_entropy_with_logits(logits, targets)
         else:
             old_targets = torch.sigmoid(self._old_model(inputs).detach())
 
             new_targets = targets.clone()
-            new_targets[..., :-self._new_classes_count] = old_targets
+
+            if self._new_classes_count > 0:
+                # Weighted average for classes already seen
+                new_targets[..., :-self._new_classes_count] = old_sample_weight * old_targets + (1 - old_sample_weight) * targets[..., :-self._new_classes_count]
+            else:
+                new_targets[..., :] = old_sample_weight * old_targets + (1 - old_sample_weight) * targets[..., :]
+
 
             loss = F.binary_cross_entropy_with_logits(logits, new_targets)
 
@@ -239,7 +245,7 @@ class ICarl(IncrementalLearner):
             exemplar_x, exemplar_y = class_exemplars
             x = np.concatenate((current_dataset.x, exemplar_x))
             y = np.concatenate((current_dataset.y, exemplar_y))
-        print("Merged shape: {}".format(x.shape))
+        # print("Merged shape: {}".format(x.shape))
         return DummyDataset(x,y, trsf=current_dataset.trsf)
 
     def build_examplars(self, train_loader):
@@ -253,7 +259,7 @@ class ICarl(IncrementalLearner):
             class_merged_dataset = self.get_merged_dataset(self._exemplar_memory.get(class_idx, None), current_dataset)
             inputs, loader = class_merged_dataset.get_custom_loader(class_idx, mode="test")
             input_classes = loader.dataset.y
-            print("Loader size: {}".format(len(loader.dataset)))
+            print("Class {}, Loader size: {}".format(class_idx, len(loader.dataset)))
             features, targets = extract_features(
                 self._network, loader
             )
