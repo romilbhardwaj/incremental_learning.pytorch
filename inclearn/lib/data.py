@@ -44,6 +44,14 @@ class IncrementalDataset:
         self._batch_size = batch_size
         self._workers = workers
         self._shuffle = shuffle
+        self._incr_mode = 'CLASS'
+        self._increment_num = increment
+
+        # Sample incremental attributes
+        self._taskid_to_idxs_map_train = {}
+        self._taskid_to_idxs_map_val = {}
+        self._taskid_to_idxs_map_test = {}
+
 
     @property
     def n_tasks(self):
@@ -52,6 +60,12 @@ class IncrementalDataset:
     def new_task(self, memory=None):
         if self._current_task >= len(self.increments):
             raise Exception("No more tasks.")
+
+        if self._current_task == 0:
+            self._incr_mode = 'CLASS'
+
+        if self._incr_mode != 'CLASS':
+            raise Exception('Not in class incremental mode')
 
         min_class = sum(self.increments[:self._current_task])
         max_class = sum(self.increments[:self._current_task + 1])
@@ -86,6 +100,73 @@ class IncrementalDataset:
         self._current_task += 1
 
         return task_info, train_loader, val_loader, test_loader
+
+    def new_task_incr(self):
+        if self._current_task >= self._increment_num:
+            raise Exception("No more tasks.")
+
+        if self._current_task == 0:
+            self._incr_mode = 'TASK'
+
+        if self._incr_mode != 'TASK':
+            raise Exception('Not in task incremental mode')
+
+        if not self._taskid_to_idxs_map_train:
+            print("Initializing indexes for sample incremental")
+            # Select uniformly distributed data
+            self._taskid_to_idxs_map_train = self.get_idx_order(self.targets_train, self._increment_num)
+            self._taskid_to_idxs_map_val = self.get_idx_order(self.targets_val, self._increment_num)
+
+            # Use complete test set for each task.
+            self._taskid_to_idxs_map_test = {i: np.array(range(0, self.targets_test.shape[0])) for i in range(0, self._increment_num)}
+
+        x_train, y_train = self.data_train[self._taskid_to_idxs_map_train[self._current_task]], self.targets_train[self._taskid_to_idxs_map_train[self._current_task]]
+        x_val, y_val = self.data_val[self._taskid_to_idxs_map_val[self._current_task]], self.targets_val[self._taskid_to_idxs_map_val[self._current_task]]
+        x_test, y_test = self.data_test[self._taskid_to_idxs_map_test[self._current_task]], self.targets_test[self._taskid_to_idxs_map_test[self._current_task]]
+
+        train_loader = self._get_loader(x_train, y_train, mode="train")
+        val_loader = self._get_loader(x_val, y_val, mode="train") if len(x_val) > 0 else None
+        test_loader = self._get_loader(x_test, y_test, mode="test")
+
+        unique, counts = np.unique(y_train, return_counts=True)
+
+        task_info = {
+            "min_class": "0_{}".format(counts[0]),
+            "max_class": "100_{}".format(counts[99]),
+            "train_idxs": self._taskid_to_idxs_map_train[self._current_task],
+            "test_idxs": self._taskid_to_idxs_map_test[self._current_task],
+            "val_idxs": self._taskid_to_idxs_map_val[self._current_task],
+            "task": self._current_task,
+            "max_task": self._increment_num,
+            "n_train_data": x_train.shape[0],
+            "n_test_data": x_test.shape[0]
+        }
+
+        self._current_task += 1
+
+        return task_info, train_loader, val_loader, test_loader
+
+    @staticmethod
+    def get_idx_order(y, num_tasks):
+        # Generates the idx ordering for sample incremental task
+        # Use this to populate the _taskid_to_idxs_maps to contain the idxs to be provided for each task increment
+        # Selects N/num_tasks samples per class for k classes, where N is the number of samples per class
+        classid_to_idx_map = {}
+        for class_id in np.unique(y):
+            classid_to_idx_map[class_id] = np.where(y == class_id)[0]
+
+        idx_order = {}
+        for t in range(0, num_tasks):
+            idx_order[t] = []   #temporary list, later concat into single vector
+            for class_id, class_idxs in classid_to_idx_map.items():
+                samples_per_task = int(len(class_idxs) / num_tasks)
+                idx_order[t].append(class_idxs[t*samples_per_task:(t+1)*samples_per_task])
+
+            if idx_order[t]:    # If any elements in the list, concat into numpy arr
+                idx_order[t] = np.concatenate(idx_order[t])
+
+        return idx_order
+
 
     def get_custom_loader(self, class_indexes, mode="test", data_source="train", shuffle=False):
         """Returns a custom loader.

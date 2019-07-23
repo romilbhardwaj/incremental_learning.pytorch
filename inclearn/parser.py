@@ -37,6 +37,9 @@ def get_parser():
     parser.add_argument("-max-task", "--max-task", default=None, type=int,
                         help="Cap the number of tasks.")
 
+    parser.add_argument("-sampleincr", "--sample-incremental", action="store_true", default=False,
+                        help="Use sample incremental protocol rather than class incremental")
+
     # Training related:
     parser.add_argument("-lr", "--lr", default=2., type=float,
                         help="Learning rate.")

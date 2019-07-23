@@ -36,7 +36,13 @@ def _train(args):
     memory = None
 
     for _ in range(inc_dataset.n_tasks):
-        task_info, train_loader, val_loader, test_loader = inc_dataset.new_task(None)   # Using no memory
+        if args["sample_incremental"] is True:
+            print("Using sample incremental protocol")
+            task_info, train_loader, val_loader, test_loader = inc_dataset.new_task_incr()
+        else:
+            print("Using class incremental protocol")
+            task_info, train_loader, val_loader, test_loader = inc_dataset.new_task(None)  # Using no memory
+
         if task_info["task"] == args["max_task"]:
             break
 
@@ -49,7 +55,7 @@ def _train(args):
         #     n_tasks=task_info["max_task"]
         # )
 
-        model._task_size = 10
+        # model._task_size = 10
 
         model.eval()
         model.before_task(train_loader, val_loader)

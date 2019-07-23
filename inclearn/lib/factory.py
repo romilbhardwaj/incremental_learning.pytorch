@@ -54,6 +54,7 @@ def get_data(args):
         shuffle=True,
         batch_size=args["batch_size"],
         workers=args["workers"],
+        increment=args["increment"],
         validation_split=args["validation"]
     )
 

@@ -45,8 +45,11 @@ class ICarl(IncrementalLearner):
 
         self._memory_size = args["memory_size"]
 
+
+        # Sample incremental stuff
         self._new_classes = set()
         self._trained_classes = set()
+        self._samples_trained_per_class = {}    # A map storing the number of samples the model has been trained on per class
         self._label_to_convclass_map = {}   # Maps the real labels to the convnet class
 
         self._network = network.BasicNet(args["convnet"], device=self._device, use_bias=True)
@@ -117,6 +120,7 @@ class ICarl(IncrementalLearner):
 
         self._scheduler.step()
 
+        self.current_train_loader = train_loader
         prog_bar = tqdm(train_loader)
         for i, (inputs, targets) in enumerate(prog_bar, start=1):
             self._optimizer.zero_grad()
@@ -158,6 +162,9 @@ class ICarl(IncrementalLearner):
 
         self._old_model = self._network.copy().freeze()
 
+        # Update the local state with new_sample_counts
+        self._samples_trained_per_class = self.get_new_total_class_counts(train_loader, self._samples_trained_per_class)
+
         self._trained_classes = self._trained_classes.union(self._new_classes)
         self._new_classes = set()
 
@@ -171,7 +178,21 @@ class ICarl(IncrementalLearner):
     # Private API
     # -----------
 
-    def _compute_loss(self, inputs, logits, targets, old_sample_weight = 0.5):
+    @staticmethod
+    def get_old_sample_weight(num_old_samples, num_new_samples):
+        def func(x):
+            return 1/(1+(1/x))
+
+        if num_old_samples == 0:
+            return 0
+        elif num_new_samples == 0:
+            raise ValueError("num_new_samples is 0, this does not make sense. Why are you calling this method?")
+        else:
+            ratio = num_new_samples/num_old_samples
+            return func(ratio)
+
+
+    def _compute_loss(self, inputs, logits, targets, old_sample_weight = 1):
         if self._old_model is None:
             # print("No old model found for loss computing, using direct loss")
             loss = F.binary_cross_entropy_with_logits(logits, targets)
@@ -341,6 +362,16 @@ class ICarl(IncrementalLearner):
             filter(lambda p: p.requires_grad, self._network.parameters()), self._opt_name, self._lr, self._weight_decay
         )
 
+
+    @staticmethod
+    def get_new_total_class_counts(train_loader, samples_trained_dict):
+        # Get class counts in the train loader
+        class_ids, counts = np.unique(train_loader.dataset.y, return_counts=True)
+        new_sample_counts = dict(zip(class_ids, counts))
+
+        # Update the local state with new_sample_counts
+        return {key: samples_trained_dict.get(key, 0) + new_sample_counts.get(key, 0)
+                                           for key in set(samples_trained_dict) | set(new_sample_counts)}
 
 def extract_features(model, loader):
     targets, features = [], []
