@@ -115,12 +115,23 @@ class ICarl(IncrementalLearner):
             result = self._train_epoch(*args, **kwargs)
         return result
 
+    def _generate_class_weights(self, train_loader):
+        class_ids, counts = np.unique(train_loader.dataset.y, return_counts=True)
+        new_sample_counts = dict(zip(class_ids, counts))
+        distillation_class_weights = {}
+        for c in class_ids:
+            distillation_class_weights[c] = self.get_old_sample_weight(self._samples_trained_per_class.get(c, 0), new_sample_counts.get(c, 0))
+        self.distillation_class_weights = distillation_class_weights
+        print(self.distillation_class_weights)
+
+
     def _train_epoch(self, train_loader, val_loader = None):
         _loss, val_loss = 0., 0.
 
         self._scheduler.step()
 
         self.current_train_loader = train_loader
+        self._generate_class_weights(train_loader)
         prog_bar = tqdm(train_loader)
         for i, (inputs, targets) in enumerate(prog_bar, start=1):
             self._optimizer.zero_grad()
@@ -178,35 +189,23 @@ class ICarl(IncrementalLearner):
     # Private API
     # -----------
 
-    @staticmethod
-    def get_old_sample_weight(num_old_samples, num_new_samples):
-        def func(x):
-            return 1/(1+(1/x))
-
-        if num_old_samples == 0:
-            return 0
-        elif num_new_samples == 0:
-            raise ValueError("num_new_samples is 0, this does not make sense. Why are you calling this method?")
-        else:
-            ratio = num_new_samples/num_old_samples
-            return func(ratio)
-
-
-    def _compute_loss(self, inputs, logits, targets, old_sample_weight = 1):
+    def _compute_loss(self, inputs, logits, targets):
         if self._old_model is None:
             # print("No old model found for loss computing, using direct loss")
             loss = F.binary_cross_entropy_with_logits(logits, targets)
         else:
             old_targets = torch.sigmoid(self._old_model(inputs).detach())
-
             new_targets = targets.clone()
+
+            _, class_tensor = targets.max(1)
+            weight_list = [self.distillation_class_weights[c.item()] for c in class_tensor]
+            old_sample_weight_tensor = self.iterable_to_tensor(weight_list).unsqueeze(1)
 
             if self._new_classes_count > 0:
                 # Weighted average for classes already seen
-                new_targets[..., :-self._new_classes_count] = old_sample_weight * old_targets + (1 - old_sample_weight) * targets[..., :-self._new_classes_count]
+                new_targets[..., :-self._new_classes_count] = old_sample_weight_tensor * old_targets + (1 - old_sample_weight_tensor) * targets[..., :-self._new_classes_count]
             else:
-                new_targets[..., :] = old_sample_weight * old_targets + (1 - old_sample_weight) * targets[..., :]
-
+                new_targets[..., :] = old_sample_weight_tensor * old_targets + (1 - old_sample_weight_tensor) * targets[..., :]
 
             loss = F.binary_cross_entropy_with_logits(logits, new_targets)
 
@@ -372,6 +371,22 @@ class ICarl(IncrementalLearner):
         # Update the local state with new_sample_counts
         return {key: samples_trained_dict.get(key, 0) + new_sample_counts.get(key, 0)
                                            for key in set(samples_trained_dict) | set(new_sample_counts)}
+
+    @staticmethod
+    def get_old_sample_weight(num_old_samples, num_new_samples):
+        def func(x):
+            return 1 - (1 / (1 + (1 / x)))
+
+        if num_old_samples == 0:
+            return 1  # Maximize distillation when creating new classes
+        elif num_new_samples == 0:
+            raise ValueError("num_new_samples is 0, this does not make sense. Why are you calling this method?")
+        else:
+            ratio = num_new_samples / num_old_samples
+            return func(ratio)
+
+    def iterable_to_tensor(self, l):
+        return torch.from_numpy(np.array(list(l))).float().to(self._device)
 
 def extract_features(model, loader):
     targets, features = [], []
