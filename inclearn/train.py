@@ -35,7 +35,8 @@ def _train(args):
 
     memory = None
 
-    for _ in range(inc_dataset.n_tasks):
+    for taskid in range(inc_dataset.n_tasks):
+        print("Task id: {}".format(taskid))
         if args["sample_incremental"] is True:
             print("Using sample incremental protocol")
             task_info, train_loader, val_loader, test_loader = inc_dataset.new_task_incr()

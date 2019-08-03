@@ -24,7 +24,8 @@ class IncrementalDataset:
         seed=1,
         increment=10,
         validation_split=0.,
-        subsample_dataset=1
+        subsample_dataset=1,
+        is_sampleincremental = False
     ):
         self.subsample_dataset = subsample_dataset
         datasets = _get_datasets(dataset_name)
@@ -44,7 +45,7 @@ class IncrementalDataset:
         self._batch_size = batch_size
         self._workers = workers
         self._shuffle = shuffle
-        self._incr_mode = 'CLASS'
+        self._is_sample_incremental = is_sampleincremental
         self._increment_num = increment
 
         # Sample incremental attributes
@@ -55,16 +56,16 @@ class IncrementalDataset:
 
     @property
     def n_tasks(self):
-        return len(self.increments)
+        if self._is_sample_incremental:
+            return self._increment_num
+        else:
+            return len(self.increments)
 
     def new_task(self, memory=None):
         if self._current_task >= len(self.increments):
             raise Exception("No more tasks.")
 
-        if self._current_task == 0:
-            self._incr_mode = 'CLASS'
-
-        if self._incr_mode != 'CLASS':
+        if self._is_sample_incremental:
             raise Exception('Not in class incremental mode')
 
         min_class = sum(self.increments[:self._current_task])
@@ -105,11 +106,8 @@ class IncrementalDataset:
         if self._current_task >= self._increment_num:
             raise Exception("No more tasks.")
 
-        if self._current_task == 0:
-            self._incr_mode = 'TASK'
-
-        if self._incr_mode != 'TASK':
-            raise Exception('Not in task incremental mode')
+        if not self._is_sample_incremental:
+            raise Exception('Not in sample incremental mode')
 
         if not self._taskid_to_idxs_map_train:
             print("Initializing indexes for sample incremental")
@@ -131,8 +129,8 @@ class IncrementalDataset:
         unique, counts = np.unique(y_train, return_counts=True)
 
         task_info = {
-            "min_class": "0_{}".format(counts[0]),
-            "max_class": "100_{}".format(counts[99]),
+            "min_class": "{}_{}".format(min(unique), counts[np.argmin(unique)]),
+            "max_class": "{}_{}".format(max(unique), counts[np.argmin(unique)]),
             "train_idxs": self._taskid_to_idxs_map_train[self._current_task],
             "test_idxs": self._taskid_to_idxs_map_test[self._current_task],
             "val_idxs": self._taskid_to_idxs_map_val[self._current_task],
@@ -198,6 +196,31 @@ class IncrementalDataset:
 
         data = np.concatenate(data)
         targets = np.concatenate(targets)
+
+        return data, self._get_loader(data, targets, shuffle=shuffle, mode=mode)
+
+    def get_custom_index_loader(self, data_indexes, mode="test", data_source="train", shuffle=True):
+        """Returns a custom loader.
+
+        :param data_indexes: A list of data indexes that we want.
+        :param mode: Various mode for the transformations applied on it.
+        :param data_source: Whether to fetch from the train, val, or test set.
+        :return: The raw data and a loader.
+        """
+        if not isinstance(data_indexes, list):  # TODO: deprecated, should always give a list
+            class_indexes = [data_indexes]
+
+        if data_source == "train":
+            x, y = self.data_train, self.targets_train
+        elif data_source == "val":
+            x, y = self.data_val, self.targets_val
+        elif data_source == "test":
+            x, y = self.data_test, self.targets_test
+        else:
+            raise ValueError("Unknown data source <{}>.".format(data_source))
+
+        data = x[data_indexes]
+        targets = y[data_indexes]
 
         return data, self._get_loader(data, targets, shuffle=shuffle, mode=mode)
 
@@ -339,7 +362,7 @@ class DummyDataset(torch.utils.data.Dataset):
 
         return x, y
 
-    def get_custom_loader(self, class_indexes, mode="test", batch_size=128, num_workers=0, shuffle=False, transform_src="icifar"):
+    def get_custom_loader(self, class_indexes, mode="test", batch_size=128, num_workers=0, shuffle=False, transform_src="cifar100"):
         """Returns a custom loader.
 
         :param class_indexes: A list of class indexes that we want.
@@ -366,10 +389,13 @@ class DummyDataset(torch.utils.data.Dataset):
 
         return data, _get_loader(data, targets, batch_size, num_workers, shuffle=shuffle, mode=mode, transform_src=transform_src)
 
-def _get_loader(x, y, batch_size, workers=0, shuffle=True, mode="train", transform_src="icifar"):
-    if transform_src == "icifar":
+def _get_loader(x, y, batch_size, workers=0, shuffle=True, mode="train", transform_src="cifar100"):
+    if transform_src == "cifar100":
         train_transforms = iCIFAR100.train_transforms
         common_transforms = iCIFAR100.common_transforms
+    elif transform_src == "cifar10":
+        train_transforms = iCIFAR10.train_transforms
+        common_transforms = iCIFAR10.common_transforms
     else:
         raise NotImplementedError("Transform family not supported")
 

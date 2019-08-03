@@ -31,7 +31,7 @@ class IncrementalLearner(abc.ABC):
     def before_task(self, train_loader, val_loader, **kwargs):
         LOGGER.info("Before task")
         self.eval()
-        self._before_task(train_loader, val_loader, **kwargs)
+        self._before_task(train_loader, **kwargs)
 
     def train_task(self, train_loader, val_loader, **kwargs):
         LOGGER.info("train task")

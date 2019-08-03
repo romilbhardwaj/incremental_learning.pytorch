@@ -89,7 +89,7 @@ class ICarl(IncrementalLearner):
     def _total_classes_count(self):
         return self._new_classes_count + self._trained_classes_count
 
-    def _before_task(self, train_loader, new_classes_count = None):
+    def _before_task(self, train_loader):
         trainloader_classes = set(train_loader.dataset.y)
         self._new_classes = trainloader_classes - self._trained_classes
         # Update label map for new classes
@@ -277,14 +277,14 @@ class ICarl(IncrementalLearner):
 
         for class_idx in self._trained_classes.union(self._new_classes):
             class_merged_dataset = self.get_merged_dataset(self._exemplar_memory.get(class_idx, None), current_dataset)
-            inputs, loader = class_merged_dataset.get_custom_loader(class_idx, mode="test")
+            inputs, loader = class_merged_dataset.get_custom_loader(class_idx, mode="test", transform_src=self._args["dataset"])
             input_classes = loader.dataset.y
             print("Class {}, Loader size: {}".format(class_idx, len(loader.dataset)))
             features, targets = extract_features(
                 self._network, loader
             )
             features_flipped, _ = extract_features(
-                self._network, class_merged_dataset.get_custom_loader(class_idx, mode="flip")[1]
+                self._network, class_merged_dataset.get_custom_loader(class_idx, mode="flip", transform_src=self._args["dataset"])[1]
             )
 
             # if class_idx in self._exemplar_features_memory:
@@ -314,7 +314,6 @@ class ICarl(IncrementalLearner):
 
         # self._data_memory = np.concatenate(self._data_memory)
         # self._targets_memory = np.concatenate(self._targets_memory)
-        print(self._class_means)
 
     def get_memory(self):
         raise NotImplementedError("Disabled because memory no longer stored in build_exemplars")
@@ -344,7 +343,7 @@ class ICarl(IncrementalLearner):
                 self.__setattr__(key, value)
 
         self._network = network.BasicNet(self._args["convnet"], device=self._device, use_bias=True)
-        self._network.add_classes(self.total_classes_count)
+        self._network.add_classes(self._total_classes_count)
         self._network.load_state_dict(model_state["_network"])
 
 

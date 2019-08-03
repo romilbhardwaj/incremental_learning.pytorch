@@ -55,7 +55,8 @@ def get_data(args):
         batch_size=args["batch_size"],
         workers=args["workers"],
         increment=args["increment"],
-        validation_split=args["validation"]
+        validation_split=args["validation"],
+        is_sampleincremental=args["sample_incremental"]
     )
 
 
