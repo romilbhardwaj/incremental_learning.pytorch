@@ -6,7 +6,7 @@ from tqdm import tqdm
 
 from inclearn import parser
 from inclearn.lib import factory, network, utils
-from inclearn.lib.data import DummyDataset
+from inclearn.lib.data_utils import get_transform
 from inclearn.models.base import IncrementalLearner
 
 EPSILON = 1e-8
@@ -257,17 +257,6 @@ class ICarl(IncrementalLearner):
     # Memory management
     # -----------------
 
-    def get_merged_dataset(self, class_exemplars, current_dataset):
-        if class_exemplars is None:
-            x = current_dataset.x
-            y = current_dataset.y
-        else:
-            exemplar_x, exemplar_y = class_exemplars
-            x = np.concatenate((current_dataset.x, exemplar_x))
-            y = np.concatenate((current_dataset.y, exemplar_y))
-        # print("Merged shape: {}".format(x.shape))
-        return DummyDataset(x,y, trsf=current_dataset.trsf)
-
     def build_examplars(self, train_loader):
         print("Building & updating memory.")
 
@@ -275,16 +264,22 @@ class ICarl(IncrementalLearner):
         self._class_means = np.zeros((100, self._network.features_dim)) # We must reconstruct the means at every iteration
         current_dataset = train_loader.dataset
 
-        for class_idx in self._trained_classes.union(self._new_classes):
-            class_merged_dataset = self.get_merged_dataset(self._exemplar_memory.get(class_idx, None), current_dataset)
-            inputs, loader = class_merged_dataset.get_custom_loader(class_idx, mode="test", transform_src=self._args["dataset"])
-            input_classes = loader.dataset.y
-            print("Class {}, Loader size: {}".format(class_idx, len(loader.dataset)))
+        for class_id in self._trained_classes.union(self._new_classes):
+            class_merged_dataset = current_dataset.get_merged_dataset(self._exemplar_memory.get(class_id, None))
+            class_idxs = class_merged_dataset.get_indexes([class_id])
+
+            trsfs = get_transform(mode="test", dataset_name=self._args["dataset"])
+            loader = class_merged_dataset.get_filtered_loader(class_idxs, custom_transforms=trsfs)
+
+            print("Class {}, Loader size: {}".format(class_id, len(loader.dataset)))
             features, targets = extract_features(
                 self._network, loader
             )
+
+            trsfs = get_transform(mode="flip", dataset_name=self._args["dataset"])
+            loader = class_merged_dataset.get_filtered_loader(class_idxs, custom_transforms=trsfs)
             features_flipped, _ = extract_features(
-                self._network, class_merged_dataset.get_custom_loader(class_idx, mode="flip", transform_src=self._args["dataset"])[1]
+                self._network, loader
             )
 
             # if class_idx in self._exemplar_features_memory:
@@ -293,24 +288,23 @@ class ICarl(IncrementalLearner):
             #     features_flipped = np.concatenate(features_flipped, self._exemplar_features_memory_flipped[class_idx])
 
             # if class_idx not in self._trained_classes:  # TODO: Run this for all data
-            self._herding_matrix[class_idx] = select_examplars(
+            self._herding_matrix[class_id] = select_examplars(
                 features, self._memory_per_class
                 )
 
             examplar_mean, alph = compute_examplar_mean(
-                features, features_flipped, self._herding_matrix[class_idx], self._memory_per_class
+                features, features_flipped, self._herding_matrix[class_id], self._memory_per_class
             )
-
-
 
             #TODO: Check the size of alph and the count of alph==1
             # self._data_memory.append(inputs[np.where(alph == 1)[0]])
             # self._targets_memory.append(targets[np.where(alph == 1)[0]])
 
-            self._exemplar_memory[class_idx] = (inputs[np.where(alph == 1)[0]], input_classes[np.where(alph == 1)[0]])
+            selected_static_idxs = np.where(alph == 1)[0]
+            selected_dataset_idxs = class_merged_dataset.get_indexes()[selected_static_idxs]
+            self._exemplar_memory[class_id] = class_merged_dataset.get_filtered_dataset(selected_dataset_idxs)
 
-
-            self._class_means[class_idx, :] = examplar_mean
+            self._class_means[class_id, :] = examplar_mean
 
         # self._data_memory = np.concatenate(self._data_memory)
         # self._targets_memory = np.concatenate(self._targets_memory)

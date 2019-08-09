@@ -24,6 +24,10 @@ def get_parser():
     # Data related:
     parser.add_argument("-d", "--dataset", default="cifar100", type=str,
                         help="Dataset to test on.")
+    parser.add_argument("-r", "--root", default="/tmp/", type=str,
+                        help="Dataset root")
+    parser.add_argument("-ln", "--list-name", default="mylist", type=str,
+                        help="Sample list name for cityscapes")
     parser.add_argument("-inc", "--increment", default=10, type=int,
                         help="Number of class to add per task.")
     parser.add_argument("-b", "--batch-size", default=128, type=int,

@@ -4,6 +4,7 @@ import time
 
 import numpy as np
 import torch
+torch.multiprocessing.set_sharing_strategy('file_system')
 
 from inclearn.lib import factory, results_utils, utils
 
@@ -27,7 +28,7 @@ def _train(args):
     factory.set_device(args)
 
     inc_dataset = factory.get_data(args)
-    args["classes_order"] = inc_dataset.class_order
+    # args["classes_order"] = inc_dataset.class_order
 
     model = factory.get_model(args)
 

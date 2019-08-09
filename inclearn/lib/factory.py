@@ -50,6 +50,8 @@ def get_model(args):
 def get_data(args):
     return data.IncrementalDataset(
         dataset_name=args["dataset"],
+        root=args["root"],
+        sample_list_name=args["list_name"],
         random_order=args["random_classes"],
         shuffle=True,
         batch_size=args["batch_size"],

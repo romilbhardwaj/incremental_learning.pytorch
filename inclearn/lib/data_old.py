@@ -10,6 +10,7 @@ from torchvision import datasets, transforms
 # --------
 # Datasets
 # --------
+from torchvision.datasets import CIFAR10
 
 
 class IncrementalDataset:
@@ -493,3 +494,6 @@ class iPermutedMNIST(iMNIST):
 # --------------
 # Data utilities
 # --------------
+
+# class CIFAR10Extended(CIFAR10):
+#     def
