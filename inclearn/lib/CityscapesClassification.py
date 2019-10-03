@@ -106,6 +106,7 @@ class CityscapesClassification(VisionDataset):
         subset_dataset = self.get_filtered_dataset(data_idxs, custom_transforms=custom_transforms)
         return DataLoader(
             subset_dataset,
+            pin_memory=True,
             **kwargs,
         )
 
@@ -149,7 +150,7 @@ class CityscapesClassification(VisionDataset):
             writer.writerows(list_of_lists)
 
     @staticmethod
-    def generate_sample_list(root, splits=["train", "test", "val"], mode='fine', classes_of_interest_map=None, write_filename=None):
+    def generate_sample_list(root, splits=["train", "test", "val"], mode='fine', classes_of_interest_map=None, write_filename=None, train_cities = []):
         result = {}
         mode = 'gtFine' if mode == 'fine' else 'gtCoarse'
         for split in splits:
@@ -181,7 +182,12 @@ class CityscapesClassification(VisionDataset):
             if not os.path.isdir(images_dir) or not os.path.isdir(targets_dir):
                 raise RuntimeError('Dataset not found or incomplete. Please make sure all required folders for the'
                                    ' specified split {} and mode {} are inside the root {} directory'.format(split, mode, root))
-            for city in os.listdir(images_dir):
+
+            cities = os.listdir(images_dir)
+            if split == "train" and train_cities:
+                print("Creating train dataset on only {} cities".format(str(train_cities)))
+                cities = [c for c in cities if c in train_cities]
+            for city in cities:
                 img_dir = os.path.join(images_dir, city)
                 target_dir = os.path.join(targets_dir, city)
                 for file_name in os.listdir(img_dir):

@@ -48,6 +48,9 @@ def _train(args):
         if task_info["task"] == args["max_task"]:
             break
 
+        if args["validation"] == 0:
+            val_loader = None
+
         # model.set_task_info(
         #     task=task_info["task"],
         #     total_n_classes=task_info["max_class"],
@@ -61,16 +64,17 @@ def _train(args):
 
         model.eval()
         model.before_task(train_loader, val_loader)
-        print("Train on {}->{}.".format(task_info["min_class"], task_info["max_class"]))
+        print("Train on {}->{}, {} samples.".format(task_info["min_class"], task_info["max_class"], len(task_info["train_idxs"])))
         model.train()
         model.train_task(train_loader, val_loader, n_epochs = args["epochs"])
         model.eval()
         model.after_task(train_loader)
 
-        print("Eval on {}->{}.".format(0, task_info["max_class"]))
+        print("Eval on {}->{}, {} samples.".format(0, task_info["max_class"], len(task_info["test_idxs"])))
         print("Test classes:{}".format(np.unique(test_loader.dataset.y)))
         ypred, ytrue = model.eval_task(test_loader)
-        acc_stats = utils.compute_accuracy(ypred, ytrue, task_size=args["increment"])
+        acc_task_size = 1 if args["sample_incremental"] is True else args["increment"]
+        acc_stats = utils.compute_accuracy(ypred, ytrue, acc_task_size)
         print(acc_stats)
         results["results"].append(acc_stats)
 

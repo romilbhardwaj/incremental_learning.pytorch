@@ -1,0 +1,5 @@
+Command to train cityscapes:
+python __main__.py --dataset cityscapes --root "/media/romilb/NEW VOLUME/cityscapes/dataset" --list-name "sample_lists/citywise/aachen" -tdd timeseries_sampleincr --sample-incremental -e 1 --batch-size 128
+
+python __main__.py --dataset cityscapes --root "/media/romilb/NEW VOLUME/cityscapes/dataset" --list-name "sample_lists/citywise/aachen" -tdd timeseries_sampleincr --sample-incremental -e 1 --batch-size 128
+Generate sample list with the generate_sample_list method in CityscapesClassification.py

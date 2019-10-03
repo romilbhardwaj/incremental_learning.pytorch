@@ -28,14 +28,18 @@ def get_parser():
                         help="Dataset root")
     parser.add_argument("-ln", "--list-name", default="mylist", type=str,
                         help="Sample list name for cityscapes")
+    parser.add_argument("-tdd", "--task-data-distribution", default="uniform_class", type=str,
+                        help="Data distribution to use for tasks in cityscapes. Either of timeseries_sampleincr or uniform_class")
     parser.add_argument("-inc", "--increment", default=10, type=int,
                         help="Number of class to add per task.")
     parser.add_argument("-b", "--batch-size", default=128, type=int,
                         help="Batch size.")
-    parser.add_argument("-w", "--workers", default=1, type=int,
+    parser.add_argument("-w", "--workers", default=10, type=int,
                         help="Number of workers preprocessing the data.")
     parser.add_argument("-v", "--validation", default=0., type=float,
                         help="Validation split (0. <= x <= 1.).")
+    parser.add_argument("-utt", "--use-train-for-test", action="store_true", default=False,
+                        help="Use the whole training set for test. Changes the metric reported in testing.")
     parser.add_argument("-random", "--random-classes", action="store_true", default=False,
                         help="Randomize classes order of increment")
     parser.add_argument("-max-task", "--max-task", default=None, type=int,

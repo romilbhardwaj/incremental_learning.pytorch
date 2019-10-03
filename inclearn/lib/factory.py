@@ -58,7 +58,9 @@ def get_data(args):
         workers=args["workers"],
         increment=args["increment"],
         validation_split=args["validation"],
-        is_sampleincremental=args["sample_incremental"]
+        is_sampleincremental=args["sample_incremental"],
+        task_data_distribution=args["task_data_distribution"],
+        use_train_for_test=args["use_train_for_test"]
     )
 
 

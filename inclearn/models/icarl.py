@@ -94,6 +94,7 @@ class ICarl(IncrementalLearner):
         self._new_classes = trainloader_classes - self._trained_classes
         # Update label map for new classes
         for class_label in self._new_classes:
+            print(class_label)
             self._label_to_convclass_map[class_label] = len(self._label_to_convclass_map)
 
         self._network.add_classes(self._new_classes_count)
@@ -118,6 +119,7 @@ class ICarl(IncrementalLearner):
     def _generate_class_weights(self, train_loader):
         class_ids, counts = np.unique(train_loader.dataset.y, return_counts=True)
         new_sample_counts = dict(zip(class_ids, counts))
+        print("New sample counts {}".format(str(new_sample_counts)))
         distillation_class_weights = {}
         for c in class_ids:
             distillation_class_weights[c] = self.get_old_sample_weight(self._samples_trained_per_class.get(c, 0), new_sample_counts.get(c, 0))

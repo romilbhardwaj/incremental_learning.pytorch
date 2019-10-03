@@ -12,10 +12,10 @@ def get_template_results(args):
     return {"config": args, "results": []}
 
 
-def save_results(results, label):
+def save_results(results, label, root="."):
     del results["config"]["device"]
 
-    folder_path = os.path.join("results", "{}_{}".format(utils.get_date(), label))
+    folder_path = os.path.join(root, "results", "{}_{}".format(utils.get_date(), label))
     if not os.path.exists(folder_path):
         os.makedirs(folder_path)
 
