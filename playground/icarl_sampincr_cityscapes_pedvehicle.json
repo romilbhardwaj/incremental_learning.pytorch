@@ -1,0 +1,74 @@
+{
+  "config": {
+    "model": "icarl",
+    "convnet": "resnet18",
+    "dropout": 0.0,
+    "herding": null,
+    "memory_size": 2000,
+    "temperature": 1,
+    "dataset": "cityscapes",
+    "root": "/home/mnr/cityscapes/",
+    "list_name": "pedvehicle",
+    "increment": 10,
+    "batch_size": 128,
+    "workers": 1,
+    "validation": 0.0,
+    "random_classes": false,
+    "max_task": null,
+    "sample_incremental": true,
+    "lr": 2.0,
+    "weight_decay": 1e-05,
+    "scheduling": [
+      50,
+      64
+    ],
+    "lr_decay": 0.2,
+    "optimizer": "sgd",
+    "epochs": 10,
+    "name": "exp",
+    "seed": 1,
+    "seed_range": null
+  },
+  "results": [
+    {
+      "total": 0.663,
+      "00-09": 0.663
+    },
+    {
+      "total": 0.749,
+      "00-09": 0.749
+    },
+    {
+      "total": 0.751,
+      "00-09": 0.751
+    },
+    {
+      "total": 0.808,
+      "00-09": 0.808
+    },
+    {
+      "total": 0.767,
+      "00-09": 0.767
+    },
+    {
+      "total": 0.81,
+      "00-09": 0.81
+    },
+    {
+      "total": 0.802,
+      "00-09": 0.802
+    },
+    {
+      "total": 0.811,
+      "00-09": 0.811
+    },
+    {
+      "total": 0.811,
+      "00-09": 0.811
+    },
+    {
+      "total": 0.824,
+      "00-09": 0.824
+    }
+  ]
+}
