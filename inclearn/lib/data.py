@@ -22,8 +22,10 @@ class IncrementalDataset:
         is_sampleincremental=True,
         task_data_distribution='uniform_class',
         use_train_for_test=False,   # If set to true, the test dataset is ignored and the whole training set is used for accuracy reporting
+        dataset_args = {},  # Extra args for dataset
         **kwargs
     ):
+        self.dataset_args = dataset_args
         self.sample_list_name = sample_list_name
         self.root = root
         self.subsample_dataset = subsample_dataset
@@ -48,13 +50,13 @@ class IncrementalDataset:
         self._taskid_to_idxs_map_test = {}
 
     def _setup_data(self, subsample_dataset=1, use_train_for_test=False):
-        self.train_dataset = self.dataset.base_dataset(self.root, self.sample_list_name, split='train')
+        self.train_dataset = self.dataset.base_dataset(self.root, self.sample_list_name, split='train', **self.dataset_args)
         if use_train_for_test:
             test_split = 'train'
         else:
             test_split = 'test'
-        self.test_dataset = self.dataset.base_dataset(self.root, self.sample_list_name, split=test_split)
-        self.val_dataset = self.dataset.base_dataset(self.root, self.sample_list_name, split='val')
+        self.test_dataset = self.dataset.base_dataset(self.root, self.sample_list_name, split=test_split, **self.dataset_args)
+        self.val_dataset = self.dataset.base_dataset(self.root, self.sample_list_name, split='val', **self.dataset_args)
 
         if subsample_dataset < 1:
             indexes = self.train_dataset.get_indexes()

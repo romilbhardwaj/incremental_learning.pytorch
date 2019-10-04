@@ -32,6 +32,10 @@ def get_parser():
                         help="Data distribution to use for tasks in cityscapes. Either of timeseries_sampleincr or uniform_class")
     parser.add_argument("-inc", "--increment", default=10, type=int,
                         help="Number of class to add per task.")
+    parser.add_argument("-dc", "--use-data-cache", action="store_true", default=False,
+                        help="Use data caching for cityscapes. WARNING: Might consume lot of disk space.")
+    parser.add_argument("-ir", "--resize-res", default=32, type=int,
+                        help="Image size to use for cityscapes.")
     parser.add_argument("-b", "--batch-size", default=128, type=int,
                         help="Batch size.")
     parser.add_argument("-w", "--workers", default=10, type=int,

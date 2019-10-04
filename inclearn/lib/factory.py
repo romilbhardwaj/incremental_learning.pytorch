@@ -48,6 +48,13 @@ def get_model(args):
 
 
 def get_data(args):
+    if args["dataset"] == "cityscapes":
+        dataset_args = {
+            "resize_res": args["resize_res"],
+            "use_cache": args["use_data_cache"]
+        }
+    else:
+        dataset_args = {}
     return data.IncrementalDataset(
         dataset_name=args["dataset"],
         root=args["root"],
@@ -60,7 +67,8 @@ def get_data(args):
         validation_split=args["validation"],
         is_sampleincremental=args["sample_incremental"],
         task_data_distribution=args["task_data_distribution"],
-        use_train_for_test=args["use_train_for_test"]
+        use_train_for_test=args["use_train_for_test"],
+        dataset_args=dataset_args
     )
 
 

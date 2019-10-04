@@ -3,6 +3,7 @@ import json
 import os
 import numpy as np
 import pandas as pd
+import torch
 from torch.utils.data.dataloader import DataLoader
 
 from torchvision.datasets.vision import VisionDataset
@@ -26,8 +27,10 @@ class CityscapesClassification(VisionDataset):
     COLUMN_ORDER = ["idx", "imgpath", "class", "x0", "y0", "x1", "y1"]
 
     def __init__(self, root, sample_list_name, subsample_idxs=None, transform=None, target_transform=None,
-                 split='train', mode='fine'):
+                 split='train', mode='fine', use_cache=False, resize_res=32):
         super(CityscapesClassification, self).__init__(root)
+        self.resize_res = resize_res
+        self.use_cache = use_cache
         self.sample_list_name = sample_list_name
         self.sample_list_path = os.path.join(root, "{}_{}_{}.csv".format(sample_list_name, split, mode))
         self.mode = mode
@@ -38,6 +41,8 @@ class CityscapesClassification(VisionDataset):
         self.targets = []
         self.subsample_idxs = subsample_idxs
 
+        print("Using data cache: {}".format(use_cache))
+
         if not os.path.isdir(self.root):
             raise RuntimeError('Dataset not found or incomplete. Please make sure all required folders for the'
                                ' specified "split" and "mode" are inside the "root" directory')
@@ -46,6 +51,36 @@ class CityscapesClassification(VisionDataset):
 
         if self.subsample_idxs is not None:
             self.samples = self.samples[self.samples["idx"].isin(self.subsample_idxs)]
+
+    def get_cache_root(self):
+        cache_root = os.path.join(self.root, "cache", self.sample_list_name, self.split, str(self.resize_res))
+        os.makedirs(cache_root, exist_ok=True)
+        return cache_root
+
+
+    def get_image(self, index):
+        sample = self.samples.iloc[index, :]
+        img_path = os.path.join(self.root, "leftImg8bit", sample["imgpath"])
+        
+        if self.use_cache:
+            cache_root = self.get_cache_root()
+            cache_file_path = os.path.join(cache_root, "sample_{}.pt".format(sample["idx"]))
+            if os.path.exists(cache_file_path):
+                # Cache hit
+                # print("Cache hit on {}".format(cache_file_path))
+                return torch.load(cache_file_path)
+
+        image = Image.open(img_path).convert('RGB')
+        cropped = image.crop((sample["x0"], sample["y0"], sample["x1"], sample["y1"])).resize((self.resize_res, self.resize_res))
+        if self.transform:
+            cropped = self.transform(cropped)
+
+        if self.use_cache:
+            # If this code executes, must've been a cache miss
+            # print("Cache miss on {}".format(cache_file_path))
+            torch.save(cropped, cache_file_path)
+
+        return cropped
 
     def __getitem__(self, index):
         """
@@ -56,18 +91,14 @@ class CityscapesClassification(VisionDataset):
             than one item. Otherwise target is a json object if target_type="polygon", else the image segmentation.
         """
 
+        image = self.get_image(index)
+
         sample = self.samples.iloc[index, :]
-        image = Image.open(os.path.join(self.root, "leftImg8bit", sample["imgpath"])).convert('RGB')
-        cropped = image.crop((sample["x0"], sample["y0"], sample["x1"], sample["y1"])).resize((32, 32))
         target = sample['class']
-
-        if self.transform:
-            cropped = self.transform(cropped)
-
         if self.target_transform:
             target = self.target_transform(target)
 
-        return cropped, target
+        return image, target
 
     def __len__(self):
         return len(self.samples)
@@ -100,13 +131,14 @@ class CityscapesClassification(VisionDataset):
         trsf = custom_transforms if custom_transforms is not None else self.transform
         return CityscapesClassification(self.root, self.sample_list_name, subsample_idxs=data_idxs,
                                         transform=trsf, target_transform=self.target_transform,
-                                        split=self.split, mode=self.mode)
+                                        split=self.split, mode=self.mode, use_cache=self.use_cache,
+                                        resize_res=self.resize_res)
 
     def get_filtered_loader(self, data_idxs, custom_transforms=None, **kwargs):
         subset_dataset = self.get_filtered_dataset(data_idxs, custom_transforms=custom_transforms)
         return DataLoader(
             subset_dataset,
-            pin_memory=True,
+            pin_memory=False,
             **kwargs,
         )
 
@@ -117,7 +149,8 @@ class CityscapesClassification(VisionDataset):
         union_idxs = np.union1d(self.samples["idx"].values, other_dataset.samples["idx"].values)
         return CityscapesClassification(self.root, self.sample_list_name, subsample_idxs=union_idxs,
                                         transform=self.transform, target_transform=self.target_transform,
-                                        split=self.split, mode=self.mode)
+                                        split=self.split, mode=self.mode, use_cache=self.use_cache,
+                                        resize_res=self.resize_res)
 
 
     @staticmethod
