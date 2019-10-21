@@ -16,6 +16,11 @@ class CityscapesClassification(VisionDataset):
     Args:
         root (string): Root directory of dataset where directory ``leftImg8bit``
             and ``gtFine`` or ``gtCoarse`` are located.
+        sample_list_name (string): Path to the sample_list to use for reading images.
+            The list is generated using the generate_sample_list method.
+        subsample_idxs (list, optional): Indexes to select from the sample_list.
+        use_cache (bool): Cache resized images on disk to speed up data loading.
+            WARNING: Might consume a lot of disk.
         split (string, optional): The image split to use, ``train``, ``test`` or ``val`` if mode="gtFine"
             otherwise ``train``, ``train_extra`` or ``val``
         mode (string, optional): The quality mode to use, ``gtFine`` or ``gtCoarse``
@@ -59,6 +64,11 @@ class CityscapesClassification(VisionDataset):
 
 
     def get_image(self, index):
+        '''
+        Reads a sample image from disk and applies a crop to get image of an object to be used for classification.
+        :param index:
+        :return: cropped image
+        '''
         sample = self.samples.iloc[index, :]
         img_path = os.path.join(self.root, "leftImg8bit", sample["imgpath"])
         
@@ -109,7 +119,7 @@ class CityscapesClassification(VisionDataset):
 
     def get_indexes(self, class_filter_list=None):
         '''
-        :return: Indexes of elements which belong in the class_list
+        :return: Indexes of elements which belong in the class_filter_list
         '''
         if class_filter_list is None:
             idx_series = self.samples["idx"]
@@ -119,15 +129,21 @@ class CityscapesClassification(VisionDataset):
 
     def get_targets(self, class_filter_list=None):
         '''
-        :return: Indexes of elements which belong in the class_list
+        :return: Targets of elements which belong in the class_filter_list
         '''
         if class_filter_list is None:
-            idx_series = self.samples["class"]
+            targets = self.samples["class"]
         else:
-            idx_series = self.samples[self.samples["class"].isin(class_filter_list)]["class"]
-        return idx_series.values
+            targets = self.samples[self.samples["class"].isin(class_filter_list)]["class"]
+        return targets.values
 
     def get_filtered_dataset(self, data_idxs, custom_transforms=None):
+        '''
+        Subsamples the current dataset to data_idxs and returns a new subsampled CityscapesClassification object.
+        :param data_idxs:
+        :param custom_transforms:
+        :return:
+        '''
         trsf = custom_transforms if custom_transforms is not None else self.transform
         return CityscapesClassification(self.root, self.sample_list_name, subsample_idxs=data_idxs,
                                         transform=trsf, target_transform=self.target_transform,
@@ -135,6 +151,13 @@ class CityscapesClassification(VisionDataset):
                                         resize_res=self.resize_res)
 
     def get_filtered_loader(self, data_idxs, custom_transforms=None, **kwargs):
+        '''
+        Return a Pytorch dataloader with only samples in data_idxs
+        :param data_idxs:
+        :param custom_transforms:
+        :param kwargs:
+        :return:
+        '''
         subset_dataset = self.get_filtered_dataset(data_idxs, custom_transforms=custom_transforms)
         return DataLoader(
             subset_dataset,
@@ -143,6 +166,11 @@ class CityscapesClassification(VisionDataset):
         )
 
     def get_merged_dataset(self, other_dataset):
+        '''
+        Merges this instance of a dataset with another dataset and returns a new dataset object.
+        :param other_dataset:
+        :return:
+        '''
         if other_dataset is None:
             return self
         assert isinstance(other_dataset, CityscapesClassification), "The other dataset is not Cityscapes dataset."
@@ -183,7 +211,20 @@ class CityscapesClassification(VisionDataset):
             writer.writerows(list_of_lists)
 
     @staticmethod
-    def generate_sample_list(root, splits=["train", "test", "val"], mode='fine', classes_of_interest_map=None, write_filename=None, train_cities = []):
+    def generate_sample_list(root, splits=["train", "test", "val"], mode='fine', classes_of_interest_map=None, write_filename=None, train_cities = [], min_res=0):
+        '''
+        Cityscapes dataset is a segmentation dataset. To convert it into a classification dataset, we must
+        get crop out images of the classes we're interested in. This method generates a sample list read by
+        a CityscapesClassification object. The sample list is a csv containing the specified classes from train_cities.
+        :param root: Dataset root
+        :param splits: The splits to generate sample lists for.
+        :param mode: Cityscapes mode
+        :param classes_of_interest_map: Dictionary mapping str labels to class ids (arbitrary ints)
+        :param write_filename: prefix for the sample_list csvs.
+        :param train_cities: Cities to use in the training set.
+        :param min_res: Minimum required cropped resolution.
+        :return: Sample list, and the csv file if write_filename param is provided.
+        '''
         result = {}
         mode = 'gtFine' if mode == 'fine' else 'gtCoarse'
         for split in splits:
@@ -234,10 +275,12 @@ class CityscapesClassification(VisionDataset):
                         if obj["label"] in classes_of_interest_map.keys():
                             class_id = classes_of_interest_map[obj["label"]]
                             x0, y0, x1, y1 = CityscapesClassification.get_rectangle_from_polygon(obj["polygon"])
-                            data = [idx_ctr, image, class_id, x0, y0, x1, y1]
-                            sample_list.append(data)
-                            idx_ctr += 1
-
+                            if ((x1-x0 > min_res) and (y1-y0 > min_res)):
+                                data = [idx_ctr, image, class_id, x0, y0, x1, y1]
+                                sample_list.append(data)
+                                idx_ctr += 1
+                            else:
+                                pass
             if write_filename:
                 write_mode = 'fine' if mode == 'gtFine' else 'coarse'
                 file_path = os.path.join(root, "{}_{}_{}.csv".format(write_filename, split, write_mode))

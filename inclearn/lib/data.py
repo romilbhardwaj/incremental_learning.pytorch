@@ -160,7 +160,7 @@ class IncrementalDataset:
                 idx_order[t] = np.concatenate(idx_order[t])
         return idx_order
 
-    def get_custom_loader(self, class_indexes, split="train", mode="test", shuffle=True):
+    def get_custom_loader(self, class_indexes, split="train", mode="test"):
         """Returns a custom loader.
 
         :param class_indexes: A list of class indexes that we want.
@@ -178,9 +178,9 @@ class IncrementalDataset:
             raise NotImplementedError("Unknown split {}".format(split))
 
         class_data_indexes = ds.filter_class(class_indexes)
-        return self.get_custom_index_loader(class_data_indexes, split, mode, shuffle)
+        return self.get_custom_index_loader(class_data_indexes, split, mode, self._shuffle)
 
-    def get_custom_index_loader(self, data_indexes=None, split="train", mode="test", shuffle=True):
+    def get_custom_index_loader(self, data_indexes=None, split="train", mode="test"):
         """Returns a custom loader.
 
         :param data_indexes: A list of data indexes that we want.
@@ -202,7 +202,7 @@ class IncrementalDataset:
             data_indexes,
             custom_transforms=trsf,
             batch_size=self._batch_size,
-            shuffle=shuffle,
+            shuffle=self._shuffle,
             num_workers=self._workers
         )
 
