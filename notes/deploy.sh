@@ -1,5 +1,5 @@
 # Download cityscapes
-wget --keep-session-cookies --save-cookies=cookies.txt --post-data 'username=romil.bhardwaj@berkeley.edu&password=Qweasdzxc#123&submit=Login' https://www.cityscapes-dataset.com/login/
+wget --keep-session-cookies --save-cookies=cookies.txt --post-data 'username=romil.bhardwaj@berkeley.edu&password=Qweasdzxc#12&submit=Login' https://www.cityscapes-dataset.com/login/
 wget --load-cookies cookies.txt --content-disposition https://www.cityscapes-dataset.com/file-handling/?packageID=1
 wget --load-cookies cookies.txt --content-disposition https://www.cityscapes-dataset.com/file-handling/?packageID=3
 
